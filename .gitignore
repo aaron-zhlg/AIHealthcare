@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# ABIDE data (large; download locally)
+data/abide/raw/
+data/abide/processed/*
+!data/abide/processed/README.md
