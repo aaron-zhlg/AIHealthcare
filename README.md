@@ -96,8 +96,11 @@ uv sync
 # Regenerate aligned dataset + FC matrices
 uv run python data/abide/scripts/build_aligned_dataset.py
 
-# Run project stub
-uv run python main.py
+# Train GCN baseline (uses MPS on Apple Silicon if available)
+uv run python scripts/train_gnn_baseline.py
+
+# Force CPU training
+uv run python scripts/train_gnn_baseline.py --cpu
 ```
 
 ---
