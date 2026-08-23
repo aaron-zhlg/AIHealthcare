@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -42,7 +43,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--cpu", action="store_true", help="Force CPU even if MPS/GPU exists")
+    parser.add_argument(
+        "--log-every",
+        type=int,
+        default=1,
+        help="Print progress every N epochs (all epochs still saved to train.log)",
+    )
     return parser.parse_args()
+
+
+class TrainLogger:
+    """Write training messages to stdout and train.log."""
+
+    def __init__(self, log_path: Path) -> None:
+        self.log_path = log_path
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = log_path.open("w", encoding="utf-8")
+
+    def log(self, message: str) -> None:
+        print(message, flush=True)
+        self._handle.write(message + "\n")
+        self._handle.flush()
+
+    def close(self) -> None:
+        self._handle.close()
 
 
 @torch.no_grad()
@@ -105,6 +129,11 @@ def main() -> None:
 
     device = pick_device(force_cpu=args.cpu)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    logger = TrainLogger(args.output_dir / "train.log")
+
+    logger.log(f"Started at {datetime.now(timezone.utc).isoformat()}")
+    logger.log(f"Output dir: {args.output_dir}")
+    logger.log(f"Args: {vars(args)}")
 
     dataset = AbideFCDataset(args.data_dir)
     labels = np.array([int(dataset[i]["label"]) for i in range(len(dataset))])
@@ -138,67 +167,71 @@ def main() -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss()
 
-    print(f"Device: {device}")
-    print(f"Subjects: {len(dataset)} (train={len(train_idx)}, val={len(val_idx)})")
-    print(f"Nodes per graph: {num_nodes}")
-    print()
+    logger.log(f"Device: {device}")
+    logger.log(f"Subjects: {len(dataset)} (train={len(train_idx)}, val={len(val_idx)})")
+    logger.log(f"Nodes per graph: {num_nodes}")
+    logger.log("")
 
     best_auc = -1.0
     history: list[dict[str, float | int]] = []
 
-    for epoch in range(1, args.epochs + 1):
-        train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
-        val_metrics = evaluate(model, val_loader, device)
+    try:
+        for epoch in range(1, args.epochs + 1):
+            train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
+            val_metrics = evaluate(model, val_loader, device)
 
-        history.append(
-            {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                **val_metrics,
-            }
+            history.append(
+                {
+                    "epoch": epoch,
+                    "train_loss": train_loss,
+                    **val_metrics,
+                }
+            )
+
+            if val_metrics["auc"] > best_auc:
+                best_auc = val_metrics["auc"]
+                torch.save(
+                    {
+                        "model_state_dict": model.state_dict(),
+                        "args": vars(args),
+                        "num_nodes": num_nodes,
+                        "best_auc": best_auc,
+                    },
+                    args.output_dir / "best_model.pt",
+                )
+
+            if epoch == 1 or epoch % args.log_every == 0 or epoch == args.epochs:
+                logger.log(
+                    f"Epoch {epoch:03d} | "
+                    f"loss={train_loss:.4f} | "
+                    f"val_acc={val_metrics['accuracy']:.3f} | "
+                    f"val_auc={val_metrics['auc']:.3f} | "
+                    f"val_f1={val_metrics['f1']:.3f}"
+                )
+    finally:
+        summary = {
+            "device": str(device),
+            "num_subjects": len(dataset),
+            "train_size": len(train_idx),
+            "val_size": len(val_idx),
+            "best_auc": best_auc,
+            "final_metrics": history[-1] if history else {},
+            "checkpoint": str(args.output_dir / "best_model.pt"),
+            "log_file": str(args.output_dir / "train.log"),
+        }
+        (args.output_dir / "metrics.json").write_text(
+            json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+        )
+        (args.output_dir / "history.json").write_text(
+            json.dumps(history, indent=2) + "\n", encoding="utf-8"
         )
 
-        if val_metrics["auc"] > best_auc:
-            best_auc = val_metrics["auc"]
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "args": vars(args),
-                    "num_nodes": num_nodes,
-                    "best_auc": best_auc,
-                },
-                args.output_dir / "best_model.pt",
-            )
-
-        if epoch == 1 or epoch % 10 == 0 or epoch == args.epochs:
-            print(
-                f"Epoch {epoch:03d} | "
-                f"loss={train_loss:.4f} | "
-                f"val_acc={val_metrics['accuracy']:.3f} | "
-                f"val_auc={val_metrics['auc']:.3f} | "
-                f"val_f1={val_metrics['f1']:.3f}"
-            )
-
-    summary = {
-        "device": str(device),
-        "num_subjects": len(dataset),
-        "train_size": len(train_idx),
-        "val_size": len(val_idx),
-        "best_auc": best_auc,
-        "final_metrics": history[-1],
-        "checkpoint": str(args.output_dir / "best_model.pt"),
-    }
-    (args.output_dir / "metrics.json").write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
-    )
-    (args.output_dir / "history.json").write_text(
-        json.dumps(history, indent=2) + "\n", encoding="utf-8"
-    )
-
-    print()
-    print(f"Best val AUC: {best_auc:.3f}")
-    print(f"Saved checkpoint: {args.output_dir / 'best_model.pt'}")
-    print(f"Saved metrics:  {args.output_dir / 'metrics.json'}")
+        logger.log("")
+        logger.log(f"Best val AUC: {best_auc:.3f}")
+        logger.log(f"Saved checkpoint: {args.output_dir / 'best_model.pt'}")
+        logger.log(f"Saved metrics:  {args.output_dir / 'metrics.json'}")
+        logger.log(f"Saved log:      {args.output_dir / 'train.log'}")
+        logger.close()
 
 
 if __name__ == "__main__":
