@@ -38,8 +38,8 @@ Virtual node modulation → test network state shift
 | Step | Description | Status |
 |------|-------------|--------|
 | **1. Data & preprocessing** | Download ABIDE `rois_ho`, align phenotypic CSV with local `.1D` files, compute Pearson FC matrices | ✅ Done |
-| **2. GNN classification baseline** | Simple GCN/GAT on 111×111 FC graphs; train/val split; accuracy, AUC, F1 | 🔲 Next |
-| **2b. Cross-site validation** | Leave-one-site-out (LOSO-CV) across 20 acquisition sites | 🔲 Planned |
+| **2. GNN classification baseline** | Simple GCN on 111×111 FC graphs; train/val split; accuracy, AUC, F1 | ✅ Done ([results](experiments/baseline_gcn_v1/README.md)) |
+| **2b. Cross-site validation** | Leave-one-site-out (LOSO-CV) across 20 acquisition sites | 🔲 Next |
 | **3. Key brain regions** | GNN attention, GNNExplainer, or gradient-based attribution | 🔲 Planned |
 | **4. LLM literature retrieval** | Query whether identified regions are implicated in ASD | 🔲 Planned |
 | **5. Virtual intervention** | Perturb node/edge features in-silico; re-run GNN; observe prediction shift | 🔲 Planned |
@@ -50,6 +50,18 @@ Virtual node modulation → test network state shift
 - **Start with Pearson FC** — simple, standard in ABIDE literature, already precomputed in `processed/fc/`. Once the pipeline works, recompute FC from `.1D` with alternative methods for comparison.
 - **884 aligned subjects** — phenotypic CSV and local `.1D` files intersected; subjects with excessive head motion (`func_mean_fd ≥ 0.2`) or missing files excluded.
 - **111 ROIs** — Harvard-Oxford atlas; each subject → one 111×111 FC matrix → one brain graph.
+
+---
+
+## Baseline Results (GCN v1)
+
+| Metric | Val set (N=177) |
+|--------|-----------------|
+| Accuracy | 62.7% |
+| AUC | **0.688** |
+| F1 | 0.680 |
+
+Full report: [experiments/baseline_gcn_v1/README.md](experiments/baseline_gcn_v1/README.md) · Git tag: `baseline-gcn-v1`
 
 ---
 
@@ -81,6 +93,12 @@ AIHealthcare/
 │       ├── download_abide_preproc.py  ← download ROI time series from S3
 │       ├── build_aligned_dataset.py   ← align CSV + .1D, compute FC
 │       └── download_func_minimal.py   ← optional 4D fMRI download (~220 GB)
+├── experiments/
+│   └── baseline_gcn_v1/              ← frozen baseline config + results
+├── scripts/
+│   ├── run_gcn.sh                    ← train + eval orchestration
+│   ├── train_gnn_baseline.py
+│   └── eval_gnn_baseline.py
 └── doc/
     └── public_fmri_neuroimaging_datasets.md
 ```
@@ -116,7 +134,7 @@ uv run python data/abide/scripts/build_aligned_dataset.py
 
 ## Next Step
 
-**GNN classification baseline** — load FC graphs from `data/abide/processed/`, train a simple GCN for ASD vs. control, and report accuracy / AUC on a held-out validation set.
+**LOSO-CV (leave-one-site-out)** — validate the GCN baseline across 20 acquisition sites for more reliable generalization estimates before paper submission.
 
 ---
 
