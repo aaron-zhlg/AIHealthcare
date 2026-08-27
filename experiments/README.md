@@ -5,7 +5,7 @@ Each experiment gets a **folder** here with frozen config and results (safe to c
 | Folder | Description | Git tag |
 |--------|-------------|---------|
 | `baseline_gcn_v1/` | 2-layer GCN, random 80/20 split | `baseline-gcn-v1` |
-| `loso_cv_gcn_v1/` | *(planned)* Leave-one-site-out CV | — |
+| `loso_cv_gcn_v1/` | Leave-one-site-out CV (20 sites) | — |
 
 ## Convention
 

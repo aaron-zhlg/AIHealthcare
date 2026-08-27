@@ -108,13 +108,13 @@ git checkout baseline-gcn-v1
 
 ## Limitations
 
-1. **Random 80/20 split only** — not leave-one-site-out (LOSO-CV). Results may be optimistic due to 20 acquisition sites.
+1. **Random 80/20 split only** — see [LOSO-CV results](../loso_cv_gcn_v1/README.md) for cross-site validation (AUC 0.707 ± 0.093).
 2. **Single seed** — no multi-seed averaging; variance unknown.
 3. **Default hyperparameters** — no systematic tuning.
 4. **Simple GCN** — no attention, no site covariates, no class balancing.
 5. **Research only** — not a diagnostic tool.
 
-**Before publication:** add LOSO-CV and report mean ± std across folds.
+**Cross-site validation:** completed in [loso_cv_gcn_v1](../loso_cv_gcn_v1/README.md) (mean AUC 0.707 ± 0.093).
 
 ---
 

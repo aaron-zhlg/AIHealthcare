@@ -20,3 +20,4 @@ packages = ["aihealthcare"]
 [project.scripts]
 train-gcn = "aihealthcare.train:main"
 eval-gcn = "aihealthcare.eval:main"
+loso-cv-gcn = "aihealthcare.loso_cv:main"

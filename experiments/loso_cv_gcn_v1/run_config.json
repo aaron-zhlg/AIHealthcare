@@ -1,0 +1,23 @@
+{
+  "name": "loso_cv_gcn_v1",
+  "validation": "leave-one-site-out (LOSO-CV)",
+  "model": "SimpleGCN (2-layer GCN, global mean pooling)",
+  "data": {
+    "dataset": "ABIDE Preprocessed rois_ho",
+    "num_subjects": 884,
+    "num_rois": 111,
+    "fc_method": "Pearson correlation",
+    "num_sites": 20
+  },
+  "hyperparameters": {
+    "epochs": 100,
+    "batch_size": 32,
+    "lr": 0.001,
+    "hidden_dim": 64,
+    "dropout": 0.5,
+    "optimizer": "Adam",
+    "weight_decay": 0.0001,
+    "seed": 42
+  },
+  "reproduce": "./scripts/run_loso_cv.sh"
+}

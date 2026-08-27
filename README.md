@@ -39,7 +39,7 @@ Virtual node modulation → test network state shift
 |------|-------------|--------|
 | **1. Data & preprocessing** | Download ABIDE `rois_ho`, align phenotypic CSV with local `.1D` files, compute Pearson FC matrices | ✅ Done |
 | **2. GNN classification baseline** | Simple GCN on 111×111 FC graphs; train/val split; accuracy, AUC, F1 | ✅ Done ([results](experiments/baseline_gcn_v1/README.md)) |
-| **2b. Cross-site validation** | Leave-one-site-out (LOSO-CV) across 20 acquisition sites | 🔲 Next |
+| **2b. Cross-site validation** | Leave-one-site-out (LOSO-CV) across 20 acquisition sites | ✅ Done ([results](experiments/loso_cv_gcn_v1/README.md)) |
 | **3. Key brain regions** | GNN attention, GNNExplainer, or gradient-based attribution | 🔲 Planned |
 | **4. LLM literature retrieval** | Query whether identified regions are implicated in ASD | 🔲 Planned |
 | **5. Virtual intervention** | Perturb node/edge features in-silico; re-run GNN; observe prediction shift | 🔲 Planned |
@@ -62,6 +62,16 @@ Virtual node modulation → test network state shift
 | F1 | 0.680 |
 
 Full report: [experiments/baseline_gcn_v1/README.md](experiments/baseline_gcn_v1/README.md) · Git tag: `baseline-gcn-v1`
+
+## LOSO-CV Results (GCN v1)
+
+| Metric | 20-fold mean ± std |
+|--------|-------------------|
+| Accuracy | 61.3% ± 9.8% |
+| AUC | **0.707 ± 0.093** |
+| F1 | 0.646 ± 0.122 |
+
+Largest held-out site (NYU, N=171): AUC **0.722**. Full per-site breakdown: [experiments/loso_cv_gcn_v1/README.md](experiments/loso_cv_gcn_v1/README.md)
 
 ---
 
@@ -93,10 +103,13 @@ AIHealthcare/
 │       ├── download_abide_preproc.py  ← download ROI time series from S3
 │       ├── build_aligned_dataset.py   ← align CSV + .1D, compute FC
 │       └── download_func_minimal.py   ← optional 4D fMRI download (~220 GB)
+├── aihealthcare/                     ← GCN model, train, eval, loso_cv
 ├── experiments/
-│   └── baseline_gcn_v1/              ← frozen baseline config + results
+│   ├── baseline_gcn_v1/              ← frozen baseline config + results
+│   └── loso_cv_gcn_v1/               ← LOSO-CV config + results
 ├── scripts/
 │   ├── run_gcn.sh                    ← train + eval orchestration
+│   ├── run_loso_cv.sh                ← leave-one-site-out CV
 │   ├── train_gnn_baseline.py
 │   └── eval_gnn_baseline.py
 └── doc/
@@ -134,7 +147,7 @@ uv run python data/abide/scripts/build_aligned_dataset.py
 
 ## Next Step
 
-**LOSO-CV (leave-one-site-out)** — validate the GCN baseline across 20 acquisition sites for more reliable generalization estimates before paper submission.
+**Key brain regions (Step 3)** — GNN attention, GNNExplainer, or gradient-based attribution to identify ROIs driving ASD vs control classification.
 
 ---
 
