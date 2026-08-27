@@ -430,4 +430,4 @@ A: C-PAC preprocessing with **band-pass filtering (filt)** and **global signal r
 A: Harvard-Oxford cortical and subcortical atlas regions. ROI label definitions: http://preprocessed-connectomes-project.org/abide/Pipelines.html#regions_of_interest
 
 **Q: Should this data be pushed to GitHub?**  
-A: Not recommended. The 884 `.1D` files total ~178 MB, and ABIDE data use is subject to its data-use terms. Prefer adding `data/abide/raw/` to `.gitignore` and keeping only this documentation and download scripts in version control.
+A: This repo tracks the aligned dataset (~225 MB total: 884 ROI time series + 884 FC matrices + manifest). ABIDE is a public dataset, but use remains subject to [INDI data-use terms](https://fcon_1000.projects.nitrc.org/indi/abide/). Do not commit optional 4D fMRI downloads (~220 GB).

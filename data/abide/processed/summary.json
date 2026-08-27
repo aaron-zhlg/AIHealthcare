@@ -1,0 +1,12 @@
+{
+  "n_aligned": 884,
+  "n_asd": 408,
+  "n_control": 476,
+  "n_csv_only": 151,
+  "n_roi_only": 0,
+  "base_dir": ".",
+  "manifest": "processed/manifest.csv",
+  "labels": "processed/labels.npy",
+  "file_ids": "processed/file_ids.txt",
+  "fc_dir": "processed/fc"
+}

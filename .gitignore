@@ -4,7 +4,5 @@ __pycache__/
 .DS_Store
 outputs/
 
-# ABIDE data (large; download locally)
-data/abide/raw/
-data/abide/processed/*
-!data/abide/processed/README.md
+# Optional: large 4D fMRI downloads (~220 GB) — not tracked
+# data/abide/func/
