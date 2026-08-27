@@ -10,15 +10,19 @@ completely before making any change.
 Improve ASD vs. healthy-control classification on ABIDE resting-state functional
 connectivity, measured by **cross-site generalization** (leave-one-site-out AUC).
 
-Current published results, which every proposal must aim to beat:
+**Compare against the measured baseline, not the published one.** The published results
+(`baseline_gcn_v1` AUC 0.688, `loso_cv_gcn_v1` AUC 0.707) selected the best epoch by
+held-out AUC, which is optimistic. Scoring the same default config through this
+framework with final-epoch metrics gives the honest numbers below, and those are what
+the gates use.
 
-| Reference | Validation | AUC |
-|-----------|------------|-----|
-| `baseline_gcn_v1` | random 80/20 split | 0.688 |
-| `loso_cv_gcn_v1` | leave-one-site-out, 20 sites | 0.707 ± 0.093 |
+| Stage | Measured baseline AUC | Published (best-epoch) |
+|-------|----------------------|------------------------|
+| `screen` | 0.628 ± 0.036 | 0.688 |
+| `loso-subset` | 0.659 ± 0.071 | — |
+| `loso-full` | 0.631 ± 0.108 | 0.707 |
 
-The largest single held-out site (NYU, N=171) reached AUC 0.722; treat it as the most
-trustworthy single-site estimate.
+Full numbers live in `autoresearch/gates.json` under `measured_baseline`.
 
 ---
 
@@ -43,17 +47,15 @@ Trials are cheap-to-expensive. Do not skip ahead.
 
 | Stage | What it runs | Cost | Gate |
 |-------|--------------|------|------|
-| `screen` | Random 80/20 split × 3 seeds | ~3–6 min | mean AUC ≥ 0.68 |
-| `loso-subset` | LOSO on NYU, UM_1, USM, UCLA_1, YALE | ~30–60 min | mean AUC ≥ 0.71 |
-| `loso-full` | LOSO on all 20 sites | ~2–5 h | mean AUC ≥ 0.72 |
+| `screen` | Random 80/20 split × 3 seeds | ~1 min | mean AUC ≥ 0.63 |
+| `loso-subset` | LOSO on NYU, UM_1, USM, UCLA_1, YALE | ~2 min | mean AUC ≥ 0.67 |
+| `loso-full` | LOSO on all 20 sites | ~6 min | mean AUC ≥ 0.66 |
 
 Thresholds live in `autoresearch/gates.json`. `trial.py` exits `0` on PASS and `3` on
 FAIL, so `run_trial.sh` can branch on the result.
 
-**Calibration note:** the reference AUCs above used best-epoch selection, so they are
-slightly optimistic relative to the final-epoch numbers the gates use. Run the baseline
-config through `screen` and `loso-subset` once to establish honest reference points
-before reading too much into a small margin.
+Runtimes assume Apple Silicon MPS with the FC matrices cached in memory. They are short
+enough that there is no excuse for skipping a stage.
 
 ---
 

@@ -44,13 +44,18 @@ agent memory that is independent of git history.
 
 ## Stages
 
-| Stage | Evaluation | Cost | Gate |
-|-------|------------|------|------|
-| `screen` | Random 80/20 split × 3 seeds | ~3–6 min | mean AUC ≥ 0.68 |
-| `loso-subset` | LOSO on the 5 largest sites | ~30–60 min | mean AUC ≥ 0.71 |
-| `loso-full` | LOSO on all 20 sites | ~2–5 h | mean AUC ≥ 0.72 |
+| Stage | Evaluation | Cost | Measured baseline | Gate |
+|-------|------------|------|-------------------|------|
+| `screen` | Random 80/20 split × 3 seeds | ~1 min | 0.628 | AUC ≥ 0.63 |
+| `loso-subset` | LOSO on the 5 largest sites | ~2 min | 0.659 | AUC ≥ 0.67 |
+| `loso-full` | LOSO on all 20 sites | ~6 min | 0.631 | AUC ≥ 0.66 |
 
 Only a `loso-full` pass justifies a new directory under `experiments/`.
+
+The published results (AUC 0.688 random split, 0.707 LOSO) picked the best epoch by
+held-out AUC. Rescoring the same config here with final-epoch metrics gives 0.628 and
+0.631, so best-epoch selection was worth roughly 0.076 AUC on LOSO. Gates are set
+against the honest numbers.
 
 ---
 
