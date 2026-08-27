@@ -73,6 +73,30 @@ Full report: [experiments/baseline_gcn_v1/README.md](experiments/baseline_gcn_v1
 
 Largest held-out site (NYU, N=171): AUC **0.722**. Full per-site breakdown: [experiments/loso_cv_gcn_v1/README.md](experiments/loso_cv_gcn_v1/README.md)
 
+> Both tables above select the best epoch by held-out AUC. Rescored with final-epoch
+> metrics, the same config gives 0.628 (random split) and 0.631 (LOSO); see
+> [autoresearch/gates.json](autoresearch/gates.json).
+
+---
+
+## Automated Experiments
+
+`autoresearch/` runs the search for a better model: an agent proposes one change per
+trial, runs it on a throwaway branch, and the branch survives only if it clears a gate.
+
+```bash
+./autoresearch/run_trial.sh --name dropout03 --note "less regularization" -- --dropout 0.3
+```
+
+| Stage | Evaluation | Cost | Gate |
+|-------|------------|------|------|
+| `screen` | Random 80/20 × 3 seeds | ~1 min | AUC ≥ 0.63 |
+| `loso-subset` | LOSO, 5 largest sites | ~2 min | AUC ≥ 0.67 |
+| `loso-full` | LOSO, all 20 sites | ~6 min | AUC ≥ 0.66 |
+
+See [autoresearch/README.md](autoresearch/README.md) for the workflow and
+[autoresearch/program.md](autoresearch/program.md) for the agent's rules.
+
 ---
 
 ## Current Data
@@ -104,6 +128,7 @@ AIHealthcare/
 │       ├── build_aligned_dataset.py   ← align CSV + .1D, compute FC
 │       └── download_func_minimal.py   ← optional 4D fMRI download (~220 GB)
 ├── aihealthcare/                     ← GCN model, train, eval, loso_cv
+├── autoresearch/                     ← automated gated experiment loop
 ├── experiments/
 │   ├── baseline_gcn_v1/              ← frozen baseline config + results
 │   └── loso_cv_gcn_v1/               ← LOSO-CV config + results
