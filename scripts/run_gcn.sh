@@ -44,12 +44,20 @@ done
 
 run_train() {
   echo "==> Training GCN baseline"
-  uv run python scripts/train_gnn_baseline.py "${PASSTHROUGH[@]}"
+  if ((${#PASSTHROUGH[@]} > 0)); then
+    uv run python -m aihealthcare.train "${PASSTHROUGH[@]}"
+  else
+    uv run python -m aihealthcare.train
+  fi
 }
 
 run_eval() {
   echo "==> Evaluating GCN baseline"
-  uv run python scripts/eval_gnn_baseline.py "${PASSTHROUGH[@]}"
+  if ((${#PASSTHROUGH[@]} > 0)); then
+    uv run python -m aihealthcare.eval "${PASSTHROUGH[@]}"
+  else
+    uv run python -m aihealthcare.eval
+  fi
 }
 
 case "$MODE" in
