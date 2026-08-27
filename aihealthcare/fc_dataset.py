@@ -27,17 +27,29 @@ def preprocess_fc(fc: np.ndarray) -> np.ndarray:
 class AbideFCDataset(Dataset):
     """Each sample is one subject's functional connectivity graph."""
 
-    def __init__(self, data_dir: Path | str = DEFAULT_DATA_DIR) -> None:
+    def __init__(
+        self, data_dir: Path | str = DEFAULT_DATA_DIR, cache: bool = True
+    ) -> None:
         self.data_dir = Path(data_dir)
         self.records = load_manifest(self.data_dir)
+        # The whole dataset is ~43 MB, so caching avoids re-reading it every epoch.
+        self._cache: dict[int, np.ndarray] | None = {} if cache else None
 
     def __len__(self) -> int:
         return len(self.records)
 
+    def _load_fc(self, index: int) -> np.ndarray:
+        if self._cache is not None and index in self._cache:
+            return self._cache[index]
+
+        fc = preprocess_fc(np.load(self.data_dir / self.records[index]["fc_path"]))
+        if self._cache is not None:
+            self._cache[index] = fc
+        return fc
+
     def __getitem__(self, index: int) -> dict[str, torch.Tensor | str]:
         record = self.records[index]
-        fc = np.load(self.data_dir / record["fc_path"])
-        fc = preprocess_fc(fc)
+        fc = self._load_fc(index)
 
         # Node features: each ROI's connectivity profile (111-dim vector).
         node_features = torch.from_numpy(fc)

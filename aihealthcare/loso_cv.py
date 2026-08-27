@@ -100,24 +100,13 @@ def train_and_evaluate_fold(
     criterion = nn.CrossEntropyLoss()
 
     best_auc = -1.0
-    best_metrics: dict[str, float] = {}
+    final_metrics: dict[str, float] = {}
 
     for epoch in range(1, args.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
         test_metrics = evaluate(model, test_loader, device)
-
-        if test_metrics["auc"] > best_auc:
-            best_auc = test_metrics["auc"]
-            best_metrics = test_metrics
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "args": vars(args),
-                    "num_nodes": num_nodes,
-                    "best_auc": best_auc,
-                },
-                fold_dir / "best_model.pt",
-            )
+        final_metrics = test_metrics
+        best_auc = max(best_auc, test_metrics["auc"])
 
         if epoch == 1 or epoch % args.log_every == 0 or epoch == args.epochs:
             logger.log(
@@ -126,11 +115,23 @@ def train_and_evaluate_fold(
                 f"test_auc={test_metrics['auc']:.3f}"
             )
 
+    # Keep the last epoch, not the best one: the held-out site is the score, so
+    # selecting on it would leak the test fold into model selection.
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "args": vars(args),
+            "num_nodes": num_nodes,
+            "final_metrics": final_metrics,
+        },
+        fold_dir / "final_model.pt",
+    )
+
     return {
         "train_size": len(train_indices),
         "test_size": len(test_indices),
-        "best_auc": float(best_auc),
-        **best_metrics,
+        "diagnostic_best_epoch_auc": float(best_auc),
+        **final_metrics,
     }
 
 
@@ -200,7 +201,7 @@ def main() -> None:
         }
         fold_results.append(fold_record)
         logger.log(
-            f"    best fold metrics | acc={metrics['accuracy']:.3f} | "
+            f"    fold result | acc={metrics['accuracy']:.3f} | "
             f"auc={metrics['auc']:.3f} | f1={metrics['f1']:.3f}"
         )
         logger.log("")
@@ -233,6 +234,7 @@ def main() -> None:
     run_config = {
         "name": "loso_cv_gcn_v1",
         "validation": "leave-one-site-out (LOSO-CV)",
+        "model_selection": "final epoch (no selection on the held-out site)",
         "model": "SimpleGCN (2-layer GCN, global mean pooling)",
         "data": {
             "dataset": "ABIDE Preprocessed rois_ho",
@@ -257,6 +259,7 @@ def main() -> None:
         "name": "loso_cv_gcn_v1",
         "evaluated_at": datetime.now(timezone.utc).date().isoformat(),
         "validation": "leave-one-site-out across acquisition sites",
+        "model_selection": "final epoch (no selection on the held-out site)",
         "aggregate_metrics": {
             "accuracy_mean": round(summary["accuracy_mean"], 4),
             "accuracy_std": round(summary["accuracy_std"], 4),
@@ -266,10 +269,11 @@ def main() -> None:
             "f1_std": round(summary["f1_std"], 4),
         },
         "folds": fold_results,
-        "baseline_comparison": {
-            "baseline_gcn_v1_auc": 0.688,
-            "note": "Baseline used random 80/20 split; LOSO-CV is stricter.",
-        },
+        "notes": (
+            "Each fold reports the last epoch. Fold entries also carry "
+            "diagnostic_best_epoch_auc, which is what selecting the best epoch on the "
+            "held-out site would have given; it is optimistic and must not be reported."
+        ),
         "local_artifacts": {
             "summary": "outputs/loso_cv_gcn_v1/summary.json",
             "folds": "outputs/loso_cv_gcn_v1/folds.json",

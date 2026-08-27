@@ -1,0 +1,341 @@
+"""Run one autoresearch trial and score it against the promotion gates.
+
+A trial trains the current branch's model under a given hyperparameter config and
+reports metrics for one of three evaluation stages (see `autoresearch/program.md`):
+
+    screen       fast multi-seed random split, used to reject bad ideas
+    loso-subset  leave-one-site-out on the largest sites, mid-cost confirmation
+    loso-full    leave-one-site-out on all 20 sites, publication-grade
+
+Gating uses **final-epoch** metrics, never best-epoch, so that the number of epochs
+stays an honest hyperparameter and no model selection happens on the test fold.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import time
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn as nn
+from sklearn.model_selection import StratifiedShuffleSplit
+from torch.utils.data import DataLoader, Subset
+
+from aihealthcare.fc_dataset import AbideFCDataset, collate_graphs
+from aihealthcare.gcn import SimpleGCN
+from aihealthcare.train import evaluate, pick_device, train_one_epoch
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DATA_DIR = REPO_ROOT / "data" / "abide"
+TRIALS_DIR = REPO_ROOT / "outputs" / "autoresearch" / "trials"
+LEDGER_PATH = REPO_ROOT / "outputs" / "autoresearch" / "ledger.jsonl"
+GATES_PATH = Path(__file__).resolve().parent / "gates.json"
+
+# Sites with the largest held-out sets; the cheap LOSO stage uses only these.
+SUBSET_SITES = ("NYU", "UM_1", "USM", "UCLA_1", "YALE")
+
+STAGES = ("screen", "loso-subset", "loso-full")
+
+PASS_EXIT_CODE = 0
+FAIL_EXIT_CODE = 3
+
+
+@dataclass(frozen=True)
+class TrialConfig:
+    epochs: int
+    batch_size: int
+    lr: float
+    hidden_dim: int
+    dropout: float
+    weight_decay: float
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--name", required=True, help="Short trial identifier")
+    parser.add_argument("--stage", choices=STAGES, default="screen")
+    parser.add_argument("--note", default="", help="One-line hypothesis being tested")
+
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--hidden-dim", type=int, default=64)
+    parser.add_argument("--dropout", type=float, default=0.5)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
+
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        nargs="+",
+        default=[42, 1337, 2026],
+        help="Seeds averaged in the screen stage (LOSO stages use the first seed)",
+    )
+    parser.add_argument("--val-ratio", type=float, default=0.2)
+    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-fold logs")
+    return parser.parse_args()
+
+
+def git_revision() -> dict[str, str]:
+    def run(*cmd: str) -> str:
+        try:
+            return subprocess.run(
+                cmd, cwd=REPO_ROOT, capture_output=True, text=True, check=True
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, OSError):
+            return "unknown"
+
+    return {
+        "branch": run("git", "rev-parse", "--abbrev-ref", "HEAD"),
+        "commit": run("git", "rev-parse", "--short", "HEAD"),
+    }
+
+
+def build_loader(dataset: AbideFCDataset, indices, batch_size: int, shuffle: bool):
+    return DataLoader(
+        Subset(dataset, list(indices)),
+        batch_size=batch_size,
+        shuffle=shuffle,
+        collate_fn=collate_graphs,
+    )
+
+
+def run_fold(
+    dataset: AbideFCDataset,
+    train_indices,
+    test_indices,
+    config: TrialConfig,
+    seed: int,
+    device: torch.device,
+) -> dict[str, float]:
+    """Train once and return final-epoch metrics (plus best-epoch for reference)."""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    train_loader = build_loader(dataset, train_indices, config.batch_size, True)
+    test_loader = build_loader(dataset, test_indices, config.batch_size, False)
+
+    num_nodes = int(dataset[0]["node_features"].shape[0])
+    model = SimpleGCN(
+        in_features=num_nodes,
+        hidden_dim=config.hidden_dim,
+        num_classes=2,
+        dropout=config.dropout,
+    ).to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=config.lr, weight_decay=config.weight_decay
+    )
+    criterion = nn.CrossEntropyLoss()
+
+    best_auc = -1.0
+    metrics: dict[str, float] = {}
+    for _ in range(config.epochs):
+        train_one_epoch(model, train_loader, optimizer, criterion, device)
+        metrics = evaluate(model, test_loader, device)
+        best_auc = max(best_auc, metrics["auc"])
+
+    return {**metrics, "best_auc": best_auc}
+
+
+def summarize(fold_metrics: list[dict[str, float]]) -> dict[str, float]:
+    summary: dict[str, float] = {}
+    for key in ("accuracy", "auc", "f1", "best_auc"):
+        values = [float(fold[key]) for fold in fold_metrics]
+        summary[f"{key}_mean"] = float(np.mean(values))
+        summary[f"{key}_std"] = float(np.std(values))
+    return summary
+
+
+def group_indices_by_site(dataset: AbideFCDataset) -> dict[str, list[int]]:
+    groups: dict[str, list[int]] = defaultdict(list)
+    for record_index, record in enumerate(dataset.records):
+        groups[str(record["SITE_ID"])].append(record_index)
+    return dict(sorted(groups.items()))
+
+
+def run_screen_stage(
+    dataset: AbideFCDataset,
+    config: TrialConfig,
+    args: argparse.Namespace,
+    device: torch.device,
+) -> tuple[list[dict], dict[str, float]]:
+    labels = np.array([int(record["label"]) for record in dataset.records])
+    runs: list[dict] = []
+
+    for seed in args.seeds:
+        splitter = StratifiedShuffleSplit(
+            n_splits=1, test_size=args.val_ratio, random_state=seed
+        )
+        train_idx, val_idx = next(splitter.split(np.zeros(len(labels)), labels))
+        metrics = run_fold(dataset, train_idx, val_idx, config, seed, device)
+        runs.append({"seed": seed, "test_size": len(val_idx), **metrics})
+        if not args.quiet:
+            print(
+                f"  seed {seed} | acc={metrics['accuracy']:.3f} "
+                f"auc={metrics['auc']:.3f} f1={metrics['f1']:.3f}",
+                flush=True,
+            )
+
+    return runs, summarize(runs)
+
+
+def run_loso_stage(
+    dataset: AbideFCDataset,
+    config: TrialConfig,
+    args: argparse.Namespace,
+    device: torch.device,
+    sites: tuple[str, ...] | None,
+) -> tuple[list[dict], dict[str, float]]:
+    all_groups = group_indices_by_site(dataset)
+    groups = all_groups
+    if sites is not None:
+        missing = [site for site in sites if site not in all_groups]
+        if missing:
+            raise SystemExit(f"Unknown SITE_ID(s) in subset: {', '.join(missing)}")
+        groups = {site: all_groups[site] for site in sites}
+
+    seed = args.seeds[0]
+    runs: list[dict] = []
+
+    for position, (site_id, test_indices) in enumerate(groups.items(), start=1):
+        # Held-out site is always excluded from training, even when scoring a subset.
+        train_indices = [
+            index
+            for other_site, indices in all_groups.items()
+            if other_site != site_id
+            for index in indices
+        ]
+        metrics = run_fold(dataset, train_indices, test_indices, config, seed, device)
+        runs.append(
+            {
+                "site_id": site_id,
+                "train_size": len(train_indices),
+                "test_size": len(test_indices),
+                **metrics,
+            }
+        )
+        if not args.quiet:
+            print(
+                f"  [{position}/{len(groups)}] {site_id:<9} n={len(test_indices):<4} "
+                f"acc={metrics['accuracy']:.3f} auc={metrics['auc']:.3f}",
+                flush=True,
+            )
+
+    return runs, summarize(runs)
+
+
+def load_gates() -> dict:
+    return json.loads(GATES_PATH.read_text(encoding="utf-8"))
+
+
+def apply_gate(stage: str, summary: dict[str, float]) -> dict:
+    gate = load_gates()["gates"][stage]
+    metric = gate["metric"]
+    observed = summary[metric]
+    passed = observed >= gate["threshold"]
+    return {
+        "stage": stage,
+        "metric": metric,
+        "threshold": gate["threshold"],
+        "observed": round(observed, 4),
+        "margin": round(observed - gate["threshold"], 4),
+        "passed": passed,
+        "rationale": gate["rationale"],
+    }
+
+
+def append_ledger(entry: dict) -> None:
+    LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with LEDGER_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry) + "\n")
+
+
+def main() -> None:
+    args = parse_args()
+    config = TrialConfig(
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        hidden_dim=args.hidden_dim,
+        dropout=args.dropout,
+        weight_decay=args.weight_decay,
+    )
+
+    device = pick_device(force_cpu=args.cpu)
+    dataset = AbideFCDataset(args.data_dir)
+    revision = git_revision()
+
+    print(f"Trial   : {args.name}")
+    print(f"Stage   : {args.stage}")
+    print(f"Branch  : {revision['branch']} @ {revision['commit']}")
+    print(f"Device  : {device}")
+    print(f"Config  : {asdict(config)}")
+    if args.note:
+        print(f"Note    : {args.note}")
+    print("")
+
+    started = time.time()
+    if args.stage == "screen":
+        runs, summary = run_screen_stage(dataset, config, args, device)
+    elif args.stage == "loso-subset":
+        runs, summary = run_loso_stage(dataset, config, args, device, SUBSET_SITES)
+    else:
+        runs, summary = run_loso_stage(dataset, config, args, device, None)
+    elapsed = time.time() - started
+
+    verdict = apply_gate(args.stage, summary)
+
+    result = {
+        "name": args.name,
+        "stage": args.stage,
+        "note": args.note,
+        "ran_at": datetime.now(timezone.utc).isoformat(),
+        "runtime_seconds": round(elapsed, 1),
+        "device": str(device),
+        "git": revision,
+        "config": asdict(config),
+        "seeds": args.seeds,
+        "summary": {key: round(value, 4) for key, value in summary.items()},
+        "runs": runs,
+        "verdict": verdict,
+    }
+
+    trial_dir = TRIALS_DIR / f"{args.stage}__{args.name}"
+    trial_dir.mkdir(parents=True, exist_ok=True)
+    (trial_dir / "result.json").write_text(
+        json.dumps(result, indent=2) + "\n", encoding="utf-8"
+    )
+    append_ledger(
+        {
+            key: result[key]
+            for key in ("name", "stage", "ran_at", "git", "config", "summary", "verdict")
+        }
+    )
+
+    print("")
+    print(f"accuracy : {summary['accuracy_mean']:.3f} ± {summary['accuracy_std']:.3f}")
+    print(f"auc      : {summary['auc_mean']:.3f} ± {summary['auc_std']:.3f}")
+    print(f"f1       : {summary['f1_mean']:.3f} ± {summary['f1_std']:.3f}")
+    print(f"runtime  : {elapsed / 60:.1f} min")
+    print("")
+    print(
+        f"gate     : {verdict['metric']} {verdict['observed']:.4f} "
+        f"vs threshold {verdict['threshold']:.4f} "
+        f"(margin {verdict['margin']:+.4f})"
+    )
+    print(f"result   : {trial_dir / 'result.json'}")
+    print(f"VERDICT: {'PASS' if verdict['passed'] else 'FAIL'}")
+
+    raise SystemExit(PASS_EXIT_CODE if verdict["passed"] else FAIL_EXIT_CODE)
+
+
+if __name__ == "__main__":
+    main()

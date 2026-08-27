@@ -53,25 +53,46 @@ Virtual node modulation → test network state shift
 
 ---
 
-## Baseline Results (GCN v1)
+## Results
 
-| Metric | Val set (N=177) |
-|--------|-----------------|
-| Accuracy | 62.7% |
-| AUC | **0.688** |
-| F1 | 0.680 |
+All metrics are taken at the **final training epoch**. Nothing is selected using the set
+it is scored on.
 
-Full report: [experiments/baseline_gcn_v1/README.md](experiments/baseline_gcn_v1/README.md) · Git tag: `baseline-gcn-v1`
+| Experiment | Validation | Accuracy | AUC | F1 |
+|------------|------------|----------|-----|-----|
+| Baseline GCN v1 | Random 80/20 split (N=177) | 64.4% | **0.677** | 0.690 |
+| LOSO-CV GCN v1 | Leave-one-site-out, 20 sites | 59.3% ± 11.2% | **0.623 ± 0.118** | 0.600 ± 0.133 |
 
-## LOSO-CV Results (GCN v1)
+Largest held-out site (NYU, N=171): AUC **0.682**. Three sites fall below chance, so
+cross-site generalization remains the open problem.
 
-| Metric | 20-fold mean ± std |
-|--------|-------------------|
-| Accuracy | 61.3% ± 9.8% |
-| AUC | **0.707 ± 0.093** |
-| F1 | 0.646 ± 0.122 |
+Full reports: [baseline](experiments/baseline_gcn_v1/README.md) ·
+[LOSO-CV](experiments/loso_cv_gcn_v1/README.md)
 
-Largest held-out site (NYU, N=171): AUC **0.722**. Full per-site breakdown: [experiments/loso_cv_gcn_v1/README.md](experiments/loso_cv_gcn_v1/README.md)
+> **Revised 2026-08-27.** Earlier revisions reported 0.688 and 0.707 by taking the epoch
+> with the highest score on the evaluation set. That selects a model using the data it is
+> scored on, so those numbers were optimistic; on LOSO the bias was worth about 0.07 AUC.
+> The pipeline now reports the final epoch, and the tables above are the corrected values.
+
+---
+
+## Automated Experiments
+
+`autoresearch/` runs the search for a better model: an agent proposes one change per
+trial, runs it on a throwaway branch, and the branch survives only if it clears a gate.
+
+```bash
+./autoresearch/run_trial.sh --name dropout03 --note "less regularization" -- --dropout 0.3
+```
+
+| Stage | Evaluation | Cost | Gate |
+|-------|------------|------|------|
+| `screen` | Random 80/20 × 3 seeds | ~1 min | AUC ≥ 0.63 |
+| `loso-subset` | LOSO, 5 largest sites | ~2 min | AUC ≥ 0.67 |
+| `loso-full` | LOSO, all 20 sites | ~6 min | AUC ≥ 0.66 |
+
+See [autoresearch/README.md](autoresearch/README.md) for the workflow and
+[autoresearch/program.md](autoresearch/program.md) for the agent's rules.
 
 ---
 
@@ -104,6 +125,7 @@ AIHealthcare/
 │       ├── build_aligned_dataset.py   ← align CSV + .1D, compute FC
 │       └── download_func_minimal.py   ← optional 4D fMRI download (~220 GB)
 ├── aihealthcare/                     ← GCN model, train, eval, loso_cv
+├── autoresearch/                     ← automated gated experiment loop
 ├── experiments/
 │   ├── baseline_gcn_v1/              ← frozen baseline config + results
 │   └── loso_cv_gcn_v1/               ← LOSO-CV config + results

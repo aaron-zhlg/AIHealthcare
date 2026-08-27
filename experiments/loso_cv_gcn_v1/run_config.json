@@ -1,6 +1,7 @@
 {
   "name": "loso_cv_gcn_v1",
   "validation": "leave-one-site-out (LOSO-CV)",
+  "model_selection": "final epoch (no selection on the held-out site)",
   "model": "SimpleGCN (2-layer GCN, global mean pooling)",
   "data": {
     "dataset": "ABIDE Preprocessed rois_ho",

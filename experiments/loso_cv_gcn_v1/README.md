@@ -3,8 +3,8 @@
 Leave-one-site-out cross-validation for the baseline GCN pipeline. Each fold holds out one acquisition site as test and trains on the remaining 19 sites.
 
 > **Evaluated:** 2026-08-27  
-> **Device:** Apple Silicon MPS  
-> **Folds:** 20 sites, 884 subjects total
+> **Folds:** 20 sites, 884 subjects total  
+> **Model selection:** final epoch — no selection on the held-out site
 
 ---
 
@@ -12,57 +12,77 @@ Leave-one-site-out cross-validation for the baseline GCN pipeline. Each fold hol
 
 | Metric | Mean ± Std |
 |--------|------------|
-| **Accuracy** | 61.3% ± 9.8% |
-| **AUC** | **0.707 ± 0.093** |
-| **F1** | 0.646 ± 0.122 |
+| **Accuracy** | 59.3% ± 11.2% |
+| **AUC** | **0.623 ± 0.118** |
+| **F1** | 0.600 ± 0.133 |
 
-**Conclusion:** Cross-site performance is comparable to the random-split baseline (AUC 0.688). The model generalizes above chance at most sites, but variance is high — some sites near random (MAX_MUN), others strong (UM_2, TRINITY). The largest held-out site (NYU, N=171) achieves AUC 0.722, which is the most reliable single-site estimate.
+**Conclusion:** Cross-site generalization is weak. The mean AUC of 0.623 is above chance
+but well below the 0.677 obtained on a random split, which is the expected direction:
+holding out an entire site removes the scanner and protocol the model was tuned to.
+Variance across sites is large (AUC 0.40 to 0.93), and three sites land below chance.
+
+> **Revised 2026-08-27.** An earlier version of this report gave AUC 0.707 ± 0.093 by
+> taking, for each fold, the epoch with the highest AUC on that fold's held-out site.
+> That selects a model using the very data it is scored on, once per fold, so the number
+> was optimistic. Rerunning the identical configuration and reporting the final epoch
+> gives 0.623 ± 0.118. The mean best-epoch AUC was 0.692, so **selection was worth about
+> 0.07 AUC** — larger than most of the improvements one would hope to publish.
 
 ---
 
-## Comparison with Baseline
+## Comparison
 
-| Experiment | Validation | AUC | Accuracy |
-|------------|------------|-----|----------|
-| Baseline GCN v1 | Random 80/20 split (N=177 val) | 0.688 | 62.7% |
-| **LOSO-CV GCN v1** | Leave-one-site-out (20 folds) | **0.707 ± 0.093** | 61.3% ± 9.8% |
+| Experiment | Validation | AUC |
+|------------|------------|-----|
+| Baseline GCN v1 | Random 80/20 split (N=177 val) | 0.677 |
+| **LOSO-CV GCN v1** | Leave-one-site-out (20 folds) | **0.623 ± 0.118** |
 
-Mean LOSO AUC is slightly higher than the baseline val AUC, but the protocols differ (per-fold best-epoch selection, different test compositions). Treat them as complementary estimates, not directly comparable point scores.
+The 0.054 drop from random split to leave-one-site-out is the cost of site effects, and
+is the number to quote when claiming generalization.
 
 ---
 
 ## Per-Site Results
 
-Sorted by test-set size (largest first — more reliable folds):
+Sorted by test-set size (largest first — more reliable folds). The final column is what
+best-epoch selection *would* have reported; it is shown to document the bias, not to be
+cited.
 
-| Site | N_test | Accuracy | AUC | F1 |
-|------|--------|----------|-----|-----|
-| NYU | 171 | 66.1% | **0.722** | 0.698 |
-| UM_1 | 82 | 61.0% | 0.636 | 0.680 |
-| USM | 61 | 70.5% | 0.795 | 0.690 |
-| UCLA_1 | 55 | 70.9% | 0.725 | 0.724 |
-| YALE | 48 | 60.4% | 0.715 | 0.667 |
-| PITT | 45 | 60.0% | 0.630 | 0.550 |
-| TRINITY | 44 | 68.2% | 0.830 | 0.611 |
-| MAX_MUN | 42 | 54.8% | 0.502 | 0.655 |
-| KKI | 39 | 69.2% | 0.577 | 0.800 |
-| CALTECH | 37 | 51.4% | 0.684 | 0.640 |
-| STANFORD | 36 | 47.2% | 0.703 | 0.345 |
-| SDSU | 33 | 54.5% | 0.655 | 0.667 |
-| LEUVEN_2 | 32 | 71.9% | 0.737 | 0.791 |
-| UM_2 | 31 | 80.6% | 0.912 | 0.857 |
-| LEUVEN_1 | 29 | 65.5% | 0.700 | 0.706 |
-| SBL | 26 | 61.5% | 0.774 | 0.688 |
-| OLIN | 25 | 52.0% | 0.617 | 0.538 |
-| OHSU | 23 | 69.6% | 0.652 | 0.667 |
-| UCLA_2 | 20 | 50.0% | 0.750 | 0.375 |
-| CMU | 5 | 40.0% | 0.833 | 0.571 |
+| Site | N_test | Accuracy | AUC | F1 | (best-epoch AUC) |
+|------|--------|----------|-----|-----|------------------|
+| NYU | 171 | 56.7% | **0.682** | 0.565 | 0.713 |
+| UM_1 | 82 | 45.1% | 0.475 | 0.416 | 0.658 |
+| USM | 61 | 65.6% | 0.728 | 0.488 | 0.779 |
+| UCLA_1 | 55 | 65.5% | 0.704 | 0.655 | 0.718 |
+| YALE | 48 | 62.5% | 0.638 | 0.710 | 0.696 |
+| PITT | 45 | 68.9% | 0.632 | 0.731 | 0.654 |
+| TRINITY | 44 | 56.8% | 0.625 | 0.558 | 0.791 |
+| MAX_MUN | 42 | 42.9% | 0.398 | 0.478 | 0.537 |
+| KKI | 39 | 46.2% | 0.506 | 0.533 | 0.531 |
+| CALTECH | 37 | 73.0% | 0.623 | 0.706 | 0.670 |
+| STANFORD | 36 | 58.3% | 0.601 | 0.516 | 0.693 |
+| SDSU | 33 | 63.6% | 0.556 | 0.750 | 0.619 |
+| LEUVEN_2 | 32 | 68.8% | 0.696 | 0.762 | 0.717 |
+| UM_2 | 31 | 87.1% | **0.925** | 0.905 | 0.965 |
+| LEUVEN_1 | 29 | 62.1% | 0.671 | 0.667 | 0.710 |
+| SBL | 26 | 57.7% | 0.768 | 0.645 | 0.774 |
+| OLIN | 25 | 40.0% | 0.429 | 0.483 | 0.597 |
+| OHSU | 23 | 60.9% | 0.553 | 0.571 | 0.614 |
+| UCLA_2 | 20 | 45.0% | 0.573 | 0.353 | 0.740 |
+| CMU | 5 | 60.0% | 0.667 | 0.500 | 0.667 |
 
 **Notes:**
-- **NYU (N=171)** — largest fold; AUC 0.722 is the key generalization number for paper reporting.
-- **MAX_MUN (AUC 0.502)** — essentially at chance; site-specific scanner/protocol effects likely dominate.
-- **CMU (N=5)** — too small for stable metrics; treat as unreliable.
-- **UM_2 (AUC 0.912)** — best fold, but N=31; high AUC may reflect site-specific signal rather than broad generalization.
+
+- **NYU (N=171)** — by far the largest fold, AUC 0.682. This is the most trustworthy
+  single-site estimate and the one to quote alongside the mean.
+- **Below chance at three sites** — MAX_MUN (0.398), OLIN (0.429) and UM_1 (0.475) score
+  worse than random. Whatever the model learns from the other 19 sites actively
+  misleads it there.
+- **UM_2 (0.925)** — the best fold, but N=31. A single site scoring this far above the
+  rest more likely reflects that site being easy than the model being good.
+- **CMU (N=5)** — too small for a stable AUC; effectively noise.
+- **Small folds are unreliable in both directions**, which is why the ±0.118 spread
+  should not be read as a confidence interval on the mean.
 
 ---
 
@@ -73,8 +93,9 @@ Same model and hyperparameters as [baseline GCN v1](../baseline_gcn_v1/README.md
 - **Model:** 2-layer GCN (`SimpleGCN`), global mean pooling
 - **Input:** 111×111 Pearson FC matrix per subject
 - **Training:** 100 epochs, batch 32, lr 0.001, hidden 64, dropout 0.5, Adam, seed 42
-- **Validation:** Leave-one-site-out — for each of 20 `SITE_ID` values, train on all other sites, test on held-out site
-- **Model selection:** Best epoch per fold by held-out site AUC (see limitations)
+- **Validation:** Leave-one-site-out — for each of 20 `SITE_ID` values, train on all
+  other sites, test on the held-out site
+- **Model selection:** none. The final epoch is reported for every fold.
 
 ---
 
@@ -99,7 +120,7 @@ Subset for debugging:
 |------|----------|---------|
 | Config | `experiments/loso_cv_gcn_v1/run_config.json` | ✅ |
 | Results | `experiments/loso_cv_gcn_v1/results.json` | ✅ |
-| Per-fold checkpoints | `outputs/loso_cv_gcn_v1/folds/<SITE>/best_model.pt` | ❌ local |
+| Per-fold checkpoints | `outputs/loso_cv_gcn_v1/folds/<SITE>/final_model.pt` | ❌ local |
 | Summary | `outputs/loso_cv_gcn_v1/summary.json` | ❌ local |
 | Log | `outputs/loso_cv_gcn_v1/loso_cv.log` | ❌ local |
 
@@ -107,17 +128,30 @@ Subset for debugging:
 
 ## Limitations
 
-1. **Per-fold test-set model selection** — best epoch is chosen by held-out site AUC, which slightly optimizes on test data. Future runs should use fixed epochs or an inner validation split on training sites.
-2. **High site variance** — std ≈ 0.09 on AUC; small sites (CMU, UCLA_2) are unstable.
-3. **Single seed** — no multi-seed averaging.
-4. **No site harmonization** — ComBat or similar not applied; site effects remain in FC matrices.
+1. **No model selection at all** — reporting the final epoch is honest but crude. The
+   right fix is an inner validation split carved out of the 19 training sites, which
+   would allow early stopping without touching the held-out site.
+2. **Single seed** — each fold is trained once; per-fold variance is unknown and the
+   ±0.118 reflects differences between sites, not run-to-run noise.
+3. **Small folds dominate the spread** — five sites have fewer than 30 subjects. A
+   subject-weighted mean would be a more stable summary than the unweighted one.
+4. **No site harmonization** — ComBat or similar is not applied, so site effects remain
+   in the FC matrices. Given three below-chance folds, this is the most promising place
+   to improve.
 5. **Research only** — not a diagnostic tool.
 
 ---
 
 ## Paper-Ready Text (draft)
 
-> To assess cross-site generalization, we performed leave-one-site-out cross-validation across 20 ABIDE acquisition sites (N=884). For each fold, the model was trained on 19 sites and evaluated on the held-out site. Mean performance was 61.3% ± 9.8% accuracy, 0.707 ± 0.093 AUC, and 0.646 ± 0.122 F1. On the largest held-out site (NYU, N=171), AUC was 0.722. Performance varied substantially across sites (AUC range 0.50–0.91), reflecting known site effects in multi-site neuroimaging datasets.
+> To assess cross-site generalization, we performed leave-one-site-out cross-validation
+> across 20 ABIDE acquisition sites (N=884). For each fold, the model was trained on 19
+> sites and evaluated on the held-out site, with metrics taken at the final training
+> epoch so that no model selection used the held-out data. Mean performance was
+> 59.3% ± 11.2% accuracy, 0.623 ± 0.118 AUC, and 0.600 ± 0.133 F1. On the largest
+> held-out site (NYU, N=171), AUC was 0.682. Performance varied substantially across
+> sites (AUC 0.40–0.93), with three sites falling below chance, reflecting known site
+> effects in multi-site neuroimaging datasets.
 
 ---
 
@@ -126,8 +160,8 @@ Subset for debugging:
 For improvements on `experiment/improvements`, beat:
 
 ```text
-LOSO-CV GCN v1:  AUC = 0.707 ± 0.093  (NYU fold: 0.722)
-Baseline GCN v1: AUC = 0.688           (random split)
+LOSO-CV GCN v1:  AUC = 0.623 ± 0.118  (NYU fold: 0.682)
+Baseline GCN v1: AUC = 0.677           (random split)
 ```
 
 Do not overwrite this experiment directory.
