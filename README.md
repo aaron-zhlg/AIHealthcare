@@ -97,10 +97,19 @@ uv sync
 uv run python data/abide/scripts/build_aligned_dataset.py
 
 # Train GCN baseline (uses MPS on Apple Silicon if available)
-uv run python scripts/train_gnn_baseline.py
+./scripts/run_gcn.sh
 
-# Force CPU training
-uv run python scripts/train_gnn_baseline.py --cpu
+# Train only
+./scripts/run_gcn.sh --train-only
+
+# Evaluate saved checkpoint on validation split
+./scripts/run_gcn.sh --eval-only
+
+# Custom hyperparameters
+./scripts/run_gcn.sh --epochs 50 --batch-size 32
+
+# Force CPU
+./scripts/run_gcn.sh --cpu
 ```
 
 ---

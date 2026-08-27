@@ -225,6 +225,19 @@ def main() -> None:
         (args.output_dir / "history.json").write_text(
             json.dumps(history, indent=2) + "\n", encoding="utf-8"
         )
+        (args.output_dir / "split.json").write_text(
+            json.dumps(
+                {
+                    "seed": args.seed,
+                    "val_ratio": args.val_ratio,
+                    "train_idx": train_idx.tolist(),
+                    "val_idx": val_idx.tolist(),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         logger.log("")
         logger.log(f"Best val AUC: {best_auc:.3f}")
