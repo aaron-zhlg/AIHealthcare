@@ -1,0 +1,70 @@
+{
+  "name": "fewer-epochs-40",
+  "stage": "screen",
+  "note": "baseline train loss keeps falling while test AUC plateaus; stop earlier",
+  "ran_at": "2026-08-27T09:21:44.001145+00:00",
+  "runtime_seconds": 26.5,
+  "device": "mps",
+  "git": {
+    "branch": "experiment/trial-fewer-epochs-40",
+    "commit": "cee8a7b"
+  },
+  "config": {
+    "epochs": 40,
+    "batch_size": 32,
+    "lr": 0.001,
+    "hidden_dim": 64,
+    "dropout": 0.5,
+    "weight_decay": 0.0001
+  },
+  "seeds": [
+    42,
+    1337,
+    2026
+  ],
+  "summary": {
+    "accuracy_mean": 0.6045,
+    "accuracy_std": 0.0138,
+    "auc_mean": 0.6319,
+    "auc_std": 0.0322,
+    "f1_mean": 0.6339,
+    "f1_std": 0.0519,
+    "best_auc_mean": 0.6512,
+    "best_auc_std": 0.0183
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "test_size": 177,
+      "accuracy": 0.6214689265536724,
+      "f1": 0.6854460093896714,
+      "auc": 0.6747111681643132,
+      "best_auc": 0.6768934531450577
+    },
+    {
+      "seed": 1337,
+      "test_size": 177,
+      "accuracy": 0.6045197740112994,
+      "f1": 0.6534653465346535,
+      "auc": 0.6238767650834404,
+      "best_auc": 0.6410783055198973
+    },
+    {
+      "seed": 2026,
+      "test_size": 177,
+      "accuracy": 0.5875706214689266,
+      "f1": 0.562874251497006,
+      "auc": 0.5970474967907573,
+      "best_auc": 0.6356867779204107
+    }
+  ],
+  "verdict": {
+    "stage": "screen",
+    "metric": "auc_mean",
+    "threshold": 0.63,
+    "observed": 0.6319,
+    "margin": 0.0019,
+    "passed": true,
+    "rationale": "Matches the measured baseline (0.628). A cheap filter: an idea that cannot equal the baseline on random splits does not deserve a LOSO run."
+  }
+}
