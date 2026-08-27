@@ -52,10 +52,9 @@ agent memory that is independent of git history.
 
 Only a `loso-full` pass justifies a new directory under `experiments/`.
 
-The published results (AUC 0.688 random split, 0.707 LOSO) picked the best epoch by
-held-out AUC. Rescoring the same config here with final-epoch metrics gives 0.628 and
-0.631, so best-epoch selection was worth roughly 0.076 AUC on LOSO. Gates are set
-against the honest numbers.
+This framework is what surfaced the best-epoch selection bias in the original results:
+rescoring the same config with final-epoch metrics moved LOSO from 0.707 to 0.62, and
+`experiments/` has since been corrected to match.
 
 ---
 

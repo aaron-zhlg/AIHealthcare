@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint",
         type=Path,
         default=None,
-        help="Model checkpoint (default: <output-dir>/best_model.pt)",
+        help="Model checkpoint (default: <output-dir>/final_model.pt)",
     )
     parser.add_argument(
         "--split",
@@ -102,7 +102,7 @@ def collect_predictions(
 
 def main() -> None:
     args = parse_args()
-    checkpoint_path = args.checkpoint or (args.output_dir / "best_model.pt")
+    checkpoint_path = args.checkpoint or (args.output_dir / "final_model.pt")
     if not checkpoint_path.exists():
         raise FileNotFoundError(
             f"Checkpoint not found: {checkpoint_path}. Run training first."
@@ -182,6 +182,7 @@ def main() -> None:
     summary = {
         "device": str(device),
         "checkpoint": str(checkpoint_path),
+        "model_selection": "final epoch (no selection on the evaluation set)",
         "split": args.split,
         "num_subjects": len(indices),
         "metrics": metrics,

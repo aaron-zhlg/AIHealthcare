@@ -174,11 +174,13 @@ def main() -> None:
 
     best_auc = -1.0
     history: list[dict[str, float | int]] = []
+    final_metrics: dict[str, float] = {}
 
     try:
         for epoch in range(1, args.epochs + 1):
             train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
             val_metrics = evaluate(model, val_loader, device)
+            final_metrics = val_metrics
 
             history.append(
                 {
@@ -209,14 +211,29 @@ def main() -> None:
                     f"val_f1={val_metrics['f1']:.3f}"
                 )
     finally:
+        # The reported checkpoint is the last epoch, not the best one: picking the best
+        # epoch by val AUC would select a model using the very set it is scored on.
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "args": vars(args),
+                "num_nodes": num_nodes,
+                "final_metrics": final_metrics,
+            },
+            args.output_dir / "final_model.pt",
+        )
+
         summary = {
             "device": str(device),
             "num_subjects": len(dataset),
             "train_size": len(train_idx),
             "val_size": len(val_idx),
-            "best_auc": best_auc,
-            "final_metrics": history[-1] if history else {},
-            "checkpoint": str(args.output_dir / "best_model.pt"),
+            "epochs_run": len(history),
+            "model_selection": "final epoch (no selection on the evaluation set)",
+            "reported_metrics": final_metrics,
+            "diagnostic_best_epoch_auc": best_auc,
+            "checkpoint": str(args.output_dir / "final_model.pt"),
+            "diagnostic_checkpoint": str(args.output_dir / "best_model.pt"),
             "log_file": str(args.output_dir / "train.log"),
         }
         (args.output_dir / "metrics.json").write_text(
@@ -240,8 +257,12 @@ def main() -> None:
         )
 
         logger.log("")
-        logger.log(f"Best val AUC: {best_auc:.3f}")
-        logger.log(f"Saved checkpoint: {args.output_dir / 'best_model.pt'}")
+        if final_metrics:
+            logger.log(
+                f"Final-epoch val AUC: {final_metrics['auc']:.3f} "
+                f"(reported) | best-epoch AUC: {best_auc:.3f} (diagnostic only)"
+            )
+        logger.log(f"Saved checkpoint: {args.output_dir / 'final_model.pt'}")
         logger.log(f"Saved metrics:  {args.output_dir / 'metrics.json'}")
         logger.log(f"Saved log:      {args.output_dir / 'train.log'}")
         logger.close()

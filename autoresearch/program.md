@@ -10,19 +10,23 @@ completely before making any change.
 Improve ASD vs. healthy-control classification on ABIDE resting-state functional
 connectivity, measured by **cross-site generalization** (leave-one-site-out AUC).
 
-**Compare against the measured baseline, not the published one.** The published results
-(`baseline_gcn_v1` AUC 0.688, `loso_cv_gcn_v1` AUC 0.707) selected the best epoch by
-held-out AUC, which is optimistic. Scoring the same default config through this
-framework with final-epoch metrics gives the honest numbers below, and those are what
-the gates use.
+Published results, corrected on 2026-08-27 to report the final epoch:
 
-| Stage | Measured baseline AUC | Published (best-epoch) |
-|-------|----------------------|------------------------|
-| `screen` | 0.628 ± 0.036 | 0.688 |
-| `loso-subset` | 0.659 ± 0.071 | — |
-| `loso-full` | 0.631 ± 0.108 | 0.707 |
+| Reference | Validation | AUC |
+|-----------|------------|-----|
+| `baseline_gcn_v1` | random 80/20 split, seed 42 | 0.677 |
+| `loso_cv_gcn_v1` | leave-one-site-out, 20 sites | 0.623 ± 0.118 |
 
-Full numbers live in `autoresearch/gates.json` under `measured_baseline`.
+Gates are set against this framework's own measurements of the same default config,
+which use identical protocol and are therefore the fair comparison:
+
+| Stage | Measured baseline AUC |
+|-------|----------------------|
+| `screen` | 0.628 ± 0.036 (3 seeds, so below the single-seed 0.677) |
+| `loso-subset` | 0.659 ± 0.071 |
+| `loso-full` | 0.631 ± 0.108 |
+
+Full numbers live in `autoresearch/gates.json`.
 
 ---
 

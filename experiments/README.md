@@ -16,10 +16,17 @@ experiments/<experiment_name>/
 └── results.json     # metrics, confusion matrix
 
 outputs/<experiment_name>/   # local only (gitignored)
-├── best_model.pt
+├── final_model.pt   # the reported model
+├── best_model.pt    # diagnostic only; selected on the evaluation set
 ├── train.log
 └── eval.log
 ```
+
+## Reporting rule
+
+Report the **final epoch**. Selecting the epoch that scores best on the evaluation set
+uses that set twice, once to choose and once to report, which inflates the result. On
+this dataset the inflation was worth about 0.07 AUC under LOSO.
 
 ## Branches vs folders
 

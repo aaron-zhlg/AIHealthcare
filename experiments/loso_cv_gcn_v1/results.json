@@ -2,200 +2,198 @@
   "name": "loso_cv_gcn_v1",
   "evaluated_at": "2026-08-27",
   "validation": "leave-one-site-out across acquisition sites",
+  "model_selection": "final epoch (no selection on the held-out site)",
   "aggregate_metrics": {
-    "accuracy_mean": 0.6127,
-    "accuracy_std": 0.0984,
-    "auc_mean": 0.7075,
-    "auc_std": 0.093,
-    "f1_mean": 0.6459,
-    "f1_std": 0.1224
+    "accuracy_mean": 0.5933,
+    "accuracy_std": 0.1117,
+    "auc_mean": 0.6225,
+    "auc_std": 0.1183,
+    "f1_mean": 0.5995,
+    "f1_std": 0.1328
   },
   "folds": [
     {
       "site_id": "CALTECH",
       "train_size": 847,
       "test_size": 37,
-      "best_auc": 0.6842105263157895,
-      "accuracy": 0.5135135135135135,
-      "f1": 0.64,
-      "auc": 0.6842105263157895
+      "diagnostic_best_epoch_auc": 0.6695906432748538,
+      "accuracy": 0.7297297297297297,
+      "f1": 0.7058823529411765,
+      "auc": 0.6228070175438596
     },
     {
       "site_id": "CMU",
       "train_size": 879,
       "test_size": 5,
-      "best_auc": 0.8333333333333334,
-      "accuracy": 0.4,
-      "f1": 0.5714285714285714,
-      "auc": 0.8333333333333334
+      "diagnostic_best_epoch_auc": 0.6666666666666667,
+      "accuracy": 0.6,
+      "f1": 0.5,
+      "auc": 0.6666666666666667
     },
     {
       "site_id": "KKI",
       "train_size": 845,
       "test_size": 39,
-      "best_auc": 0.5771604938271605,
-      "accuracy": 0.6923076923076923,
-      "f1": 0.8,
-      "auc": 0.5771604938271605
+      "diagnostic_best_epoch_auc": 0.5308641975308642,
+      "accuracy": 0.46153846153846156,
+      "f1": 0.5333333333333333,
+      "auc": 0.5061728395061729
     },
     {
       "site_id": "LEUVEN_1",
       "train_size": 855,
       "test_size": 29,
-      "best_auc": 0.7,
-      "accuracy": 0.6551724137931034,
-      "f1": 0.7058823529411765,
-      "auc": 0.7
+      "diagnostic_best_epoch_auc": 0.7095238095238096,
+      "accuracy": 0.6206896551724138,
+      "f1": 0.6666666666666666,
+      "auc": 0.6714285714285714
     },
     {
       "site_id": "LEUVEN_2",
       "train_size": 852,
       "test_size": 32,
-      "best_auc": 0.7368421052631579,
-      "accuracy": 0.71875,
-      "f1": 0.7906976744186046,
-      "auc": 0.7368421052631579
+      "diagnostic_best_epoch_auc": 0.7165991902834008,
+      "accuracy": 0.6875,
+      "f1": 0.7619047619047619,
+      "auc": 0.6963562753036437
     },
     {
       "site_id": "MAX_MUN",
       "train_size": 842,
       "test_size": 42,
-      "best_auc": 0.5023148148148149,
-      "accuracy": 0.5476190476190477,
-      "f1": 0.6545454545454545,
-      "auc": 0.5023148148148149
+      "diagnostic_best_epoch_auc": 0.5370370370370371,
+      "accuracy": 0.42857142857142855,
+      "f1": 0.4782608695652174,
+      "auc": 0.39814814814814814
     },
     {
       "site_id": "NYU",
       "train_size": 713,
       "test_size": 171,
-      "best_auc": 0.722253284875594,
-      "accuracy": 0.6608187134502924,
-      "f1": 0.6979166666666666,
-      "auc": 0.722253284875594
+      "diagnostic_best_epoch_auc": 0.7127481129438077,
+      "accuracy": 0.5672514619883041,
+      "f1": 0.5647058823529412,
+      "auc": 0.6821358680458485
     },
     {
       "site_id": "OHSU",
       "train_size": 861,
       "test_size": 23,
-      "best_auc": 0.6515151515151516,
-      "accuracy": 0.6956521739130435,
-      "f1": 0.6666666666666666,
-      "auc": 0.6515151515151516
+      "diagnostic_best_epoch_auc": 0.6136363636363636,
+      "accuracy": 0.6086956521739131,
+      "f1": 0.5714285714285714,
+      "auc": 0.553030303030303
     },
     {
       "site_id": "OLIN",
       "train_size": 859,
       "test_size": 25,
-      "best_auc": 0.6168831168831168,
-      "accuracy": 0.52,
-      "f1": 0.5384615384615384,
-      "auc": 0.6168831168831168
+      "diagnostic_best_epoch_auc": 0.5974025974025974,
+      "accuracy": 0.4,
+      "f1": 0.4827586206896552,
+      "auc": 0.4285714285714286
     },
     {
       "site_id": "PITT",
       "train_size": 839,
       "test_size": 45,
-      "best_auc": 0.6304347826086956,
-      "accuracy": 0.6,
-      "f1": 0.55,
-      "auc": 0.6304347826086956
+      "diagnostic_best_epoch_auc": 0.6541501976284585,
+      "accuracy": 0.6888888888888889,
+      "f1": 0.7307692307692307,
+      "auc": 0.6324110671936759
     },
     {
       "site_id": "SBL",
       "train_size": 858,
       "test_size": 26,
-      "best_auc": 0.7738095238095238,
-      "accuracy": 0.6153846153846154,
-      "f1": 0.6875,
-      "auc": 0.7738095238095238
+      "diagnostic_best_epoch_auc": 0.7738095238095238,
+      "accuracy": 0.5769230769230769,
+      "f1": 0.6451612903225806,
+      "auc": 0.7678571428571428
     },
     {
       "site_id": "SDSU",
       "train_size": 851,
       "test_size": 33,
-      "best_auc": 0.6547619047619048,
-      "accuracy": 0.5454545454545454,
-      "f1": 0.6666666666666666,
-      "auc": 0.6547619047619048
+      "diagnostic_best_epoch_auc": 0.6190476190476191,
+      "accuracy": 0.6363636363636364,
+      "f1": 0.75,
+      "auc": 0.5555555555555556
     },
     {
       "site_id": "STANFORD",
       "train_size": 848,
       "test_size": 36,
-      "best_auc": 0.7027863777089783,
-      "accuracy": 0.4722222222222222,
-      "f1": 0.3448275862068966,
-      "auc": 0.7027863777089783
+      "diagnostic_best_epoch_auc": 0.6934984520123839,
+      "accuracy": 0.5833333333333334,
+      "f1": 0.5161290322580645,
+      "auc": 0.6006191950464396
     },
     {
       "site_id": "TRINITY",
       "train_size": 840,
       "test_size": 44,
-      "best_auc": 0.8302277432712216,
-      "accuracy": 0.6818181818181818,
-      "f1": 0.6111111111111112,
-      "auc": 0.8302277432712216
+      "diagnostic_best_epoch_auc": 0.7908902691511387,
+      "accuracy": 0.5681818181818182,
+      "f1": 0.5581395348837209,
+      "auc": 0.6252587991718427
     },
     {
       "site_id": "UCLA_1",
       "train_size": 829,
       "test_size": 55,
-      "best_auc": 0.7248677248677248,
-      "accuracy": 0.7090909090909091,
-      "f1": 0.7241379310344828,
-      "auc": 0.7248677248677248
+      "diagnostic_best_epoch_auc": 0.7182539682539683,
+      "accuracy": 0.6545454545454545,
+      "f1": 0.6545454545454545,
+      "auc": 0.7037037037037036
     },
     {
       "site_id": "UCLA_2",
       "train_size": 864,
       "test_size": 20,
-      "best_auc": 0.75,
-      "accuracy": 0.5,
-      "f1": 0.375,
-      "auc": 0.75
+      "diagnostic_best_epoch_auc": 0.7395833333333333,
+      "accuracy": 0.45,
+      "f1": 0.35294117647058826,
+      "auc": 0.5729166666666667
     },
     {
       "site_id": "UM_1",
       "train_size": 802,
       "test_size": 82,
-      "best_auc": 0.6358695652173914,
-      "accuracy": 0.6097560975609756,
-      "f1": 0.68,
-      "auc": 0.6358695652173914
+      "diagnostic_best_epoch_auc": 0.6576086956521738,
+      "accuracy": 0.45121951219512196,
+      "f1": 0.4155844155844156,
+      "auc": 0.4752415458937198
     },
     {
       "site_id": "UM_2",
       "train_size": 853,
       "test_size": 31,
-      "best_auc": 0.9122807017543859,
-      "accuracy": 0.8064516129032258,
-      "f1": 0.8571428571428571,
-      "auc": 0.9122807017543859
+      "diagnostic_best_epoch_auc": 0.9649122807017544,
+      "accuracy": 0.8709677419354839,
+      "f1": 0.9047619047619048,
+      "auc": 0.9254385964912282
     },
     {
       "site_id": "USM",
       "train_size": 823,
       "test_size": 61,
-      "best_auc": 0.7951945080091534,
-      "accuracy": 0.7049180327868853,
-      "f1": 0.6896551724137931,
-      "auc": 0.7951945080091534
+      "diagnostic_best_epoch_auc": 0.7791762013729977,
+      "accuracy": 0.6557377049180327,
+      "f1": 0.4878048780487805,
+      "auc": 0.7276887871853547
     },
     {
       "site_id": "YALE",
       "train_size": 836,
       "test_size": 48,
-      "best_auc": 0.715034965034965,
-      "accuracy": 0.6041666666666666,
-      "f1": 0.6666666666666666,
-      "auc": 0.715034965034965
+      "diagnostic_best_epoch_auc": 0.6958041958041958,
+      "accuracy": 0.625,
+      "f1": 0.7096774193548387,
+      "auc": 0.6381118881118881
     }
   ],
-  "baseline_comparison": {
-    "baseline_gcn_v1_auc": 0.688,
-    "note": "Baseline used random 80/20 split; LOSO-CV is stricter."
-  },
+  "notes": "Each fold reports the last epoch. Fold entries also carry diagnostic_best_epoch_auc, which is what selecting the best epoch on the held-out site would have given; it is optimistic and must not be reported.",
   "local_artifacts": {
     "summary": "outputs/loso_cv_gcn_v1/summary.json",
     "folds": "outputs/loso_cv_gcn_v1/folds.json",
