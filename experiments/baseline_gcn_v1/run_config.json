@@ -1,0 +1,28 @@
+{
+  "name": "baseline_gcn_v1",
+  "git_tag": "baseline-gcn-v1",
+  "model": "SimpleGCN (2-layer GCN, global mean pooling)",
+  "data": {
+    "dataset": "ABIDE Preprocessed rois_ho",
+    "num_subjects": 884,
+    "num_rois": 111,
+    "fc_method": "Pearson correlation"
+  },
+  "split": {
+    "method": "StratifiedShuffleSplit",
+    "train_size": 707,
+    "val_size": 177,
+    "val_ratio": 0.2,
+    "seed": 42
+  },
+  "hyperparameters": {
+    "epochs": 100,
+    "batch_size": 32,
+    "lr": 0.001,
+    "hidden_dim": 64,
+    "dropout": 0.5,
+    "optimizer": "Adam",
+    "weight_decay": 0.0001
+  },
+  "reproduce": "./scripts/run_gcn.sh"
+}
