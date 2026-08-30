@@ -1,0 +1,81 @@
+src_index,src,dst_index,dst,attribution,abs_attribution
+62,L Frontal Medial Cortex,95,L Frontal Operculum,0.003025,0.003025
+62,L Frontal Medial Cortex,66,L Subcallosal Cortex,-0.002778,0.002778
+13,R Accumbens,66,L Subcallosal Cortex,-0.002500,0.002500
+76,L Cuneal Cortex,77,R Cuneal Cortex,0.002392,0.002392
+52,L SMG posterior,62,L Frontal Medial Cortex,0.002389,0.002389
+62,L Frontal Medial Cortex,64,L SMA / Juxtapositional,0.002321,0.002321
+16,L Insular Cortex,95,L Frontal Operculum,-0.002301,0.002301
+17,R Insular Cortex,62,L Frontal Medial Cortex,0.002197,0.002197
+62,L Frontal Medial Cortex,63,R Frontal Medial Cortex,-0.002179,0.002179
+17,R Insular Cortex,101,L Planum Polare,-0.002158,0.002158
+62,L Frontal Medial Cortex,97,L Central Opercular Cortex,0.002134,0.002134
+2,L Putamen,62,L Frontal Medial Cortex,0.002118,0.002118
+17,R Insular Cortex,95,L Frontal Operculum,-0.002093,0.002093
+75,R Precuneous Cortex,77,R Cuneal Cortex,0.002064,0.002064
+95,L Frontal Operculum,97,L Central Opercular Cortex,-0.002027,0.002027
+19,R Superior Frontal Gyrus,95,L Frontal Operculum,0.002005,0.002005
+2,L Putamen,95,L Frontal Operculum,-0.001992,0.001992
+17,R Insular Cortex,97,L Central Opercular Cortex,-0.001974,0.001974
+26,L Precentral Gyrus,52,L SMG posterior,-0.001942,0.001942
+37,R MTG posterior,95,L Frontal Operculum,0.001921,0.001921
+52,L SMG posterior,84,R Parahippocampal posterior,0.001911,0.001911
+2,L Putamen,97,L Central Opercular Cortex,-0.001897,0.001897
+26,L Precentral Gyrus,62,L Frontal Medial Cortex,0.001881,0.001881
+97,L Central Opercular Cortex,101,L Planum Polare,-0.001877,0.001877
+66,L Subcallosal Cortex,84,R Parahippocampal posterior,-0.001861,0.001861
+97,L Central Opercular Cortex,98,R Central Opercular Cortex,-0.001813,0.001813
+16,L Insular Cortex,62,L Frontal Medial Cortex,0.001804,0.001804
+13,R Accumbens,62,L Frontal Medial Cortex,-0.001791,0.001791
+62,L Frontal Medial Cortex,84,R Parahippocampal posterior,-0.001770,0.001770
+95,L Frontal Operculum,101,L Planum Polare,-0.001765,0.001765
+52,L SMG posterior,66,L Subcallosal Cortex,0.001765,0.001765
+2,L Putamen,17,R Insular Cortex,-0.001765,0.001765
+26,L Precentral Gyrus,84,R Parahippocampal posterior,0.001763,0.001763
+62,L Frontal Medial Cortex,98,R Central Opercular Cortex,0.001756,0.001756
+37,R MTG posterior,62,L Frontal Medial Cortex,-0.001748,0.001748
+72,L Cingulate posterior,76,L Cuneal Cortex,0.001744,0.001744
+59,R LOC inferior,72,L Cingulate posterior,0.001737,0.001737
+35,R MTG anterior,62,L Frontal Medial Cortex,-0.001732,0.001732
+2,L Putamen,16,L Insular Cortex,-0.001711,0.001711
+62,L Frontal Medial Cortex,101,L Planum Polare,0.001708,0.001708
+64,L SMA / Juxtapositional,66,L Subcallosal Cortex,0.001697,0.001697
+16,L Insular Cortex,97,L Central Opercular Cortex,-0.001696,0.001696
+52,L SMG posterior,53,R SMG posterior,-0.001689,0.001689
+66,L Subcallosal Cortex,95,L Frontal Operculum,0.001669,0.001669
+52,L SMG posterior,97,L Central Opercular Cortex,-0.001667,0.001667
+60,L Intracalcarine Cortex,109,L Occipital Pole,0.001655,0.001655
+37,R MTG posterior,97,L Central Opercular Cortex,0.001652,0.001652
+66,L Subcallosal Cortex,68,L Paracingulate Gyrus,-0.001644,0.001644
+48,L Superior Parietal Lobule,49,R Superior Parietal Lobule,-0.001641,0.001641
+54,L Angular Gyrus,84,R Parahippocampal posterior,0.001640,0.001640
+2,L Putamen,37,R MTG posterior,0.001631,0.001631
+64,L SMA / Juxtapositional,69,R Paracingulate Gyrus,0.001621,0.001621
+34,L MTG anterior,62,L Frontal Medial Cortex,-0.001614,0.001614
+26,L Precentral Gyrus,64,L SMA / Juxtapositional,-0.001605,0.001605
+37,R MTG posterior,64,L SMA / Juxtapositional,0.001598,0.001598
+16,L Insular Cortex,17,R Insular Cortex,-0.001592,0.001592
+63,R Frontal Medial Cortex,66,L Subcallosal Cortex,-0.001588,0.001588
+13,R Accumbens,84,R Parahippocampal posterior,-0.001567,0.001567
+37,R MTG posterior,101,L Planum Polare,0.001559,0.001559
+64,L SMA / Juxtapositional,97,L Central Opercular Cortex,-0.001557,0.001557
+60,L Intracalcarine Cortex,93,L Occipital Fusiform Gyrus,0.001541,0.001541
+53,R SMG posterior,62,L Frontal Medial Cortex,0.001538,0.001538
+37,R MTG posterior,52,L SMG posterior,0.001530,0.001530
+43,R ITG posterior,95,L Frontal Operculum,0.001524,0.001524
+2,L Putamen,101,L Planum Polare,-0.001524,0.001524
+19,R Superior Frontal Gyrus,97,L Central Opercular Cortex,0.001520,0.001520
+62,L Frontal Medial Cortex,65,R SMA / Juxtapositional,0.001517,0.001517
+59,R LOC inferior,68,L Paracingulate Gyrus,0.001514,0.001514
+53,R SMG posterior,84,R Parahippocampal posterior,0.001508,0.001508
+66,L Subcallosal Cortex,69,R Paracingulate Gyrus,-0.001505,0.001505
+52,L SMG posterior,100,R Parietal Operculum,-0.001502,0.001502
+62,L Frontal Medial Cortex,69,R Paracingulate Gyrus,-0.001500,0.001500
+62,L Frontal Medial Cortex,68,L Paracingulate Gyrus,-0.001500,0.001500
+55,R Angular Gyrus,85,L Lingual Gyrus,0.001495,0.001495
+27,R Precentral Gyrus,65,R SMA / Juxtapositional,-0.001492,0.001492
+16,L Insular Cortex,37,R MTG posterior,0.001490,0.001490
+64,L SMA / Juxtapositional,84,R Parahippocampal posterior,0.001489,0.001489
+49,R Superior Parietal Lobule,51,R SMG anterior,-0.001485,0.001485
+69,R Paracingulate Gyrus,95,L Frontal Operculum,0.001479,0.001479
+51,R SMG anterior,52,L SMG posterior,-0.001477,0.001477
