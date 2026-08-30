@@ -55,6 +55,19 @@ def parse_args() -> argparse.Namespace:
         help="Subjects to attribute. Falls back to all if split.json is missing.",
     )
     parser.add_argument(
+        "--site",
+        type=str,
+        default="",
+        help="If set, only attribute subjects from this SITE_ID (for LOSO folds).",
+    )
+    parser.add_argument(
+        "--loso-folds-dir",
+        type=Path,
+        default=None,
+        help="If set, explain every fold's held-out site and write the mean "
+        "attribution to --output-dir (LOSO experiment figure).",
+    )
+    parser.add_argument(
         "--split-json",
         type=Path,
         default=None,
@@ -91,8 +104,17 @@ def resolve_checkpoint(path: Path | None) -> Path:
 
 
 def select_indices(
-    dataset: AbideFCDataset, split_name: str, split_json: Path | None
+    dataset: AbideFCDataset,
+    split_name: str,
+    split_json: Path | None,
+    site: str = "",
 ) -> list[int]:
+    if site:
+        return [
+            i
+            for i, record in enumerate(dataset.records)
+            if str(record["SITE_ID"]) == site
+        ]
     if split_name == "all" or split_json is None or not split_json.exists():
         return list(range(len(dataset)))
     split = json.loads(split_json.read_text(encoding="utf-8"))
@@ -248,11 +270,51 @@ def write_top_edges(
             )
 
 
+def write_attribution_outputs(
+    out_dir: Path,
+    table: list[dict],
+    node_scores: np.ndarray,
+    edge_scores: np.ndarray,
+    title: str,
+    top_rois: int,
+    top_edges: int,
+    extra_summary: dict,
+) -> dict:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.save(out_dir / "node_attribution.npy", node_scores)
+    np.save(out_dir / "edge_attribution.npy", edge_scores)
+    write_node_table(out_dir / "node_attribution.csv", table, node_scores)
+    write_top_edges(out_dir / "top_edges.csv", table, edge_scores, top_edges)
+    plot_top_rois(node_scores, table, out_dir / "top_rois.png", top_k=top_rois, title=title)
+    plot_chord(edge_scores, table, out_dir / "chord.png", top_k=top_edges, title=title)
+
+    ranked = np.argsort(-np.abs(node_scores))
+    summary = {
+        "output_dir": str(out_dir),
+        "model": "SimpleGCN",
+        "method": "integrated gradients on node features and |FC| adjacency",
+        "explained_at": datetime.now(timezone.utc).isoformat(),
+        "top_rois": [
+            {
+                "name": table[int(i)]["name"],
+                "network": table[int(i)]["network"],
+                "attribution": round(float(node_scores[int(i)]), 6),
+            }
+            for i in ranked[:top_rois]
+        ],
+        "figures": {"top_rois": "top_rois.png", "chord": "chord.png"},
+        **extra_summary,
+    }
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return summary
+
+
 def explain_checkpoint(
     checkpoint: Path | str,
     output_dir: Path | str | None = None,
     data_dir: Path | str = DEFAULT_DATA_DIR,
     split: str = "val",
+    site: str = "",
     target: str = "asd",
     ig_steps: int = 24,
     batch_size: int = 8,
@@ -280,7 +342,14 @@ def explain_checkpoint(
 
     dataset = AbideFCDataset(data_dir)
     split_json = checkpoint_path.parent / "split.json"
-    indices = select_indices(dataset, split, split_json if split_json.exists() else None)
+    indices = select_indices(
+        dataset,
+        split,
+        split_json if split_json.exists() else None,
+        site=site,
+    )
+    if not indices:
+        raise SystemExit(f"No subjects matched site={site!r} split={split}")
     loader = DataLoader(
         Subset(dataset, indices),
         batch_size=batch_size,
@@ -292,71 +361,127 @@ def explain_checkpoint(
     table = roi_table(data_dir)
     node_scores = np.asarray(result["node_mean"], dtype=np.float64)
     edge_scores = np.asarray(result["edge_mean"], dtype=np.float64)
-
-    np.save(out_dir / "node_attribution.npy", node_scores)
-    np.save(out_dir / "edge_attribution.npy", edge_scores)
-    write_node_table(out_dir / "node_attribution.csv", table, node_scores)
-    write_top_edges(out_dir / "top_edges.csv", table, edge_scores, top_edges)
-
-    plot_top_rois(
+    return write_attribution_outputs(
+        out_dir,
+        table,
         node_scores,
-        table,
-        out_dir / "top_rois.png",
-        top_k=top_rois,
-        title=f"Top ROIs ({checkpoint_path.parent.name})",
-    )
-    plot_chord(
         edge_scores,
-        table,
-        out_dir / "chord.png",
-        top_k=top_edges,
         title=f"GNN-attributed connections ({checkpoint_path.parent.name})",
+        top_rois=top_rois,
+        top_edges=top_edges,
+        extra_summary={
+            "checkpoint": str(checkpoint_path),
+            "target": target,
+            "site": site or None,
+            "split": site or (split if split_json.exists() else "all"),
+            "n_subjects": int(result["n_graphs"]),
+            "ig_steps": ig_steps,
+        },
     )
 
-    ranked = np.argsort(-np.abs(node_scores))
-    summary = {
-        "checkpoint": str(checkpoint_path),
-        "output_dir": str(out_dir),
-        "model": "SimpleGCN",
-        "method": "integrated gradients on node features and |FC| adjacency",
-        "target": target,
-        "split": split if split_json.exists() else "all",
-        "n_subjects": int(result["n_graphs"]),
-        "ig_steps": ig_steps,
-        "explained_at": datetime.now(timezone.utc).isoformat(),
-        "top_rois": [
-            {
-                "name": table[int(i)]["name"],
-                "network": table[int(i)]["network"],
-                "attribution": round(float(node_scores[int(i)]), 6),
-            }
-            for i in ranked[:top_rois]
-        ],
-        "figures": {
-            "top_rois": "top_rois.png",
-            "chord": "chord.png",
+
+def explain_loso_folds(
+    folds_dir: Path | str,
+    output_dir: Path | str,
+    data_dir: Path | str = DEFAULT_DATA_DIR,
+    target: str = "asd",
+    ig_steps: int = 24,
+    batch_size: int = 8,
+    top_rois: int = 20,
+    top_edges: int = 80,
+    cpu: bool = False,
+) -> dict:
+    """Attribute each LOSO fold on its held-out site; write the subject-weighted mean."""
+    folds_path = Path(folds_dir)
+    out_dir = Path(output_dir)
+    dataset = AbideFCDataset(data_dir)
+    table = roi_table(data_dir)
+    device = pick_device(force_cpu=cpu)
+
+    node_sum = None
+    edge_sum = None
+    n_total = 0
+    fold_summaries = []
+
+    sites = sorted(p.name for p in folds_path.iterdir() if p.is_dir())
+    for site in sites:
+        ckpt = folds_path / site / "final_model.pt"
+        if not ckpt.exists():
+            print(f"skip {site}: no final_model.pt", flush=True)
+            continue
+        indices = select_indices(dataset, "all", None, site=site)
+        if not indices:
+            print(f"skip {site}: no subjects", flush=True)
+            continue
+        model = load_model(ckpt, device)
+        loader = DataLoader(
+            Subset(dataset, indices),
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=collate_graphs,
+        )
+        result = attribute_loader(model, loader, device, target, ig_steps)
+        node = np.asarray(result["node_mean"], dtype=np.float64)
+        edge = np.asarray(result["edge_mean"], dtype=np.float64)
+        n = int(result["n_graphs"])
+        node_sum = node * n if node_sum is None else node_sum + node * n
+        edge_sum = edge * n if edge_sum is None else edge_sum + edge * n
+        n_total += n
+        fold_summaries.append({"site_id": site, "n_subjects": n})
+        print(f"  {site:<10} n={n}  top={table[int(np.argmax(np.abs(node)))]['abbr']}", flush=True)
+
+    if n_total == 0 or node_sum is None or edge_sum is None:
+        raise SystemExit(f"No LOSO folds explained under {folds_path}")
+
+    return write_attribution_outputs(
+        out_dir,
+        table,
+        node_sum / n_total,
+        edge_sum / n_total,
+        title="GNN-attributed connections (LOSO-CV, site-weighted mean)",
+        top_rois=top_rois,
+        top_edges=top_edges,
+        extra_summary={
+            "target": target,
+            "split": "held-out site per fold, then subject-weighted mean",
+            "n_subjects": n_total,
+            "n_folds": len(fold_summaries),
+            "ig_steps": ig_steps,
+            "folds": fold_summaries,
         },
-    }
-    (out_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
-    return summary
 
 
 def main() -> None:
     args = parse_args()
-    summary = explain_checkpoint(
-        checkpoint=args.checkpoint or Path("outputs/gcn_baseline"),
-        output_dir=args.output_dir,
-        data_dir=args.data_dir,
-        split=args.split,
-        target=args.target,
-        ig_steps=args.ig_steps,
-        batch_size=args.batch_size,
-        top_rois=args.top_rois,
-        top_edges=args.top_edges,
-        cpu=args.cpu,
-    )
+    if args.loso_folds_dir is not None:
+        if args.output_dir is None:
+            raise SystemExit("--output-dir is required with --loso-folds-dir")
+        summary = explain_loso_folds(
+            folds_dir=args.loso_folds_dir,
+            output_dir=args.output_dir,
+            data_dir=args.data_dir,
+            target=args.target,
+            ig_steps=args.ig_steps,
+            batch_size=args.batch_size,
+            top_rois=args.top_rois,
+            top_edges=args.top_edges,
+            cpu=args.cpu,
+        )
+    else:
+        summary = explain_checkpoint(
+            checkpoint=args.checkpoint or Path("outputs/gcn_baseline"),
+            output_dir=args.output_dir,
+            data_dir=args.data_dir,
+            split=args.split,
+            site=args.site,
+            target=args.target,
+            ig_steps=args.ig_steps,
+            batch_size=args.batch_size,
+            top_rois=args.top_rois,
+            top_edges=args.top_edges,
+            cpu=args.cpu,
+        )
     print(f"Wrote figures to {summary['output_dir']}")
     print(f"Chord : {summary['output_dir']}/chord.png")
     print(f"ROIs  : {summary['output_dir']}/top_rois.png")

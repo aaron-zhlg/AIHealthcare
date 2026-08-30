@@ -6,7 +6,9 @@
 #   ./scripts/run_explain.sh --checkpoint outputs/gcn_baseline/final_model.pt \
 #       --output-dir experiments/baseline_gcn_v1/figures
 #   ./scripts/run_explain.sh --checkpoint outputs/loso_cv_gcn_v1/folds/NYU/final_model.pt \
-#       --output-dir experiments/loso_cv_gcn_v1/figures/NYU --split all
+#       --output-dir experiments/loso_cv_gcn_v1/figures/NYU --site NYU
+#   ./scripts/run_explain.sh --loso-folds-dir outputs/loso_cv_gcn_v1/folds \
+#       --output-dir experiments/loso_cv_gcn_v1/figures
 #
 # Any extra flags are forwarded to `python -m aihealthcare.explain`.
 

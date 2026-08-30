@@ -108,6 +108,7 @@ git checkout baseline-gcn-v1
 |------|----------|---------|
 | Config | `experiments/baseline_gcn_v1/run_config.json` | ✅ |
 | Results | `experiments/baseline_gcn_v1/results.json` | ✅ |
+| Attribution figures | `experiments/baseline_gcn_v1/figures/` | ✅ |
 | Checkpoint (reported) | `outputs/gcn_baseline/final_model.pt` | ❌ local |
 | Checkpoint (diagnostic) | `outputs/gcn_baseline/best_model.pt` | ❌ local |
 | Predictions | `outputs/gcn_baseline/predictions_val.csv` | ❌ local |

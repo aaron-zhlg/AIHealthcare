@@ -120,6 +120,7 @@ Subset for debugging:
 |------|----------|---------|
 | Config | `experiments/loso_cv_gcn_v1/run_config.json` | ✅ |
 | Results | `experiments/loso_cv_gcn_v1/results.json` | ✅ |
+| Attribution figures | `experiments/loso_cv_gcn_v1/figures/` | ✅ |
 | Per-fold checkpoints | `outputs/loso_cv_gcn_v1/folds/<SITE>/final_model.pt` | ❌ local |
 | Summary | `outputs/loso_cv_gcn_v1/summary.json` | ❌ local |
 | Log | `outputs/loso_cv_gcn_v1/loso_cv.log` | ❌ local |

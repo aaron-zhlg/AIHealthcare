@@ -1,0 +1,199 @@
+{
+  "output_dir": "experiments/loso_cv_gcn_v1/figures",
+  "model": "SimpleGCN",
+  "method": "integrated gradients on node features and |FC| adjacency",
+  "explained_at": "2026-08-30T04:58:03.662203+00:00",
+  "top_rois": [
+    {
+      "name": "Right Putamen",
+      "network": "Subcortical",
+      "attribution": 0.104796
+    },
+    {
+      "name": "R Superior Frontal Gyrus",
+      "network": "Frontoparietal",
+      "attribution": -0.099073
+    },
+    {
+      "name": "Left Amygdala",
+      "network": "Limbic",
+      "attribution": 0.096554
+    },
+    {
+      "name": "Right Pallidum",
+      "network": "Subcortical",
+      "attribution": 0.089736
+    },
+    {
+      "name": "Right Amygdala",
+      "network": "Limbic",
+      "attribution": 0.087409
+    },
+    {
+      "name": "R Angular Gyrus",
+      "network": "Default",
+      "attribution": -0.079137
+    },
+    {
+      "name": "R Heschl's Gyrus",
+      "network": "Auditory",
+      "attribution": -0.078049
+    },
+    {
+      "name": "Left Hippocampus",
+      "network": "Limbic",
+      "attribution": 0.075495
+    },
+    {
+      "name": "R Planum Temporale",
+      "network": "Auditory",
+      "attribution": -0.068839
+    },
+    {
+      "name": "R Lingual Gyrus",
+      "network": "Visual",
+      "attribution": -0.059821
+    },
+    {
+      "name": "L Subcallosal Cortex",
+      "network": "Limbic",
+      "attribution": -0.057931
+    },
+    {
+      "name": "L Superior Frontal Gyrus",
+      "network": "Frontoparietal",
+      "attribution": -0.057662
+    },
+    {
+      "name": "L Middle Frontal Gyrus",
+      "network": "Frontoparietal",
+      "attribution": -0.057362
+    },
+    {
+      "name": "L Supracalcarine Cortex",
+      "network": "Visual",
+      "attribution": -0.056822
+    },
+    {
+      "name": "L LOC superior",
+      "network": "Visual",
+      "attribution": -0.05582
+    },
+    {
+      "name": "L Heschl's Gyrus",
+      "network": "Auditory",
+      "attribution": -0.055073
+    },
+    {
+      "name": "R ITG posterior",
+      "network": "Limbic",
+      "attribution": -0.054827
+    },
+    {
+      "name": "L Superior Parietal Lobule",
+      "network": "DorsalAttention",
+      "attribution": -0.054139
+    },
+    {
+      "name": "L Angular Gyrus",
+      "network": "Default",
+      "attribution": -0.052819
+    },
+    {
+      "name": "Left Accumbens",
+      "network": "Subcortical",
+      "attribution": 0.052041
+    }
+  ],
+  "figures": {
+    "top_rois": "top_rois.png",
+    "chord": "chord.png"
+  },
+  "target": "asd",
+  "split": "held-out site per fold, then subject-weighted mean",
+  "n_subjects": 884,
+  "n_folds": 20,
+  "ig_steps": 24,
+  "folds": [
+    {
+      "site_id": "CALTECH",
+      "n_subjects": 37
+    },
+    {
+      "site_id": "CMU",
+      "n_subjects": 5
+    },
+    {
+      "site_id": "KKI",
+      "n_subjects": 39
+    },
+    {
+      "site_id": "LEUVEN_1",
+      "n_subjects": 29
+    },
+    {
+      "site_id": "LEUVEN_2",
+      "n_subjects": 32
+    },
+    {
+      "site_id": "MAX_MUN",
+      "n_subjects": 42
+    },
+    {
+      "site_id": "NYU",
+      "n_subjects": 171
+    },
+    {
+      "site_id": "OHSU",
+      "n_subjects": 23
+    },
+    {
+      "site_id": "OLIN",
+      "n_subjects": 25
+    },
+    {
+      "site_id": "PITT",
+      "n_subjects": 45
+    },
+    {
+      "site_id": "SBL",
+      "n_subjects": 26
+    },
+    {
+      "site_id": "SDSU",
+      "n_subjects": 33
+    },
+    {
+      "site_id": "STANFORD",
+      "n_subjects": 36
+    },
+    {
+      "site_id": "TRINITY",
+      "n_subjects": 44
+    },
+    {
+      "site_id": "UCLA_1",
+      "n_subjects": 55
+    },
+    {
+      "site_id": "UCLA_2",
+      "n_subjects": 20
+    },
+    {
+      "site_id": "UM_1",
+      "n_subjects": 82
+    },
+    {
+      "site_id": "UM_2",
+      "n_subjects": 31
+    },
+    {
+      "site_id": "USM",
+      "n_subjects": 61
+    },
+    {
+      "site_id": "YALE",
+      "n_subjects": 48
+    }
+  ]
+}
