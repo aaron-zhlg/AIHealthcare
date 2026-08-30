@@ -5,6 +5,7 @@ description = "AIHealthcare — ABIDE brain connectivity and ASD classification"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "matplotlib>=3.10.0",
     "numpy>=2.5.2",
     "scikit-learn>=1.9.0",
     "torch>=2.13.0",
@@ -21,3 +22,4 @@ packages = ["aihealthcare", "autoresearch"]
 train-gcn = "aihealthcare.train:main"
 eval-gcn = "aihealthcare.eval:main"
 loso-cv-gcn = "aihealthcare.loso_cv:main"
+explain-gcn = "aihealthcare.explain:main"

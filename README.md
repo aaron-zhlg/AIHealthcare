@@ -40,7 +40,7 @@ Virtual node modulation → test network state shift
 | **1. Data & preprocessing** | Download ABIDE `rois_ho`, align phenotypic CSV with local `.1D` files, compute Pearson FC matrices | ✅ Done |
 | **2. GNN classification baseline** | Simple GCN on 111×111 FC graphs; train/val split; accuracy, AUC, F1 | ✅ Done ([results](experiments/baseline_gcn_v1/README.md)) |
 | **2b. Cross-site validation** | Leave-one-site-out (LOSO-CV) across 20 acquisition sites | ✅ Done ([results](experiments/loso_cv_gcn_v1/README.md)) |
-| **3. Key brain regions** | GNN attention, GNNExplainer, or gradient-based attribution | 🔲 Planned |
+| **3. Key brain regions** | Integrated gradients on any `SimpleGCN` checkpoint; ROI ranking + chord plot | 🔲 Code ready (`./scripts/run_explain.sh`) |
 | **4. LLM literature retrieval** | Query whether identified regions are implicated in ASD | 🔲 Planned |
 | **5. Virtual intervention** | Perturb node/edge features in-silico; re-run GNN; observe prediction shift | 🔲 Planned |
 | **Future** | Swap FC algorithms (Spearman, partial correlation, dynamic FC) from `.1D` time series | 🔲 Planned |
@@ -124,7 +124,7 @@ AIHealthcare/
 │       ├── download_abide_preproc.py  ← download ROI time series from S3
 │       ├── build_aligned_dataset.py   ← align CSV + .1D, compute FC
 │       └── download_func_minimal.py   ← optional 4D fMRI download (~220 GB)
-├── aihealthcare/                     ← GCN model, train, eval, loso_cv
+├── aihealthcare/                     ← GCN model, train, eval, loso_cv, explain
 ├── autoresearch/                     ← automated gated experiment loop
 ├── experiments/
 │   ├── baseline_gcn_v1/              ← frozen baseline config + results
@@ -132,6 +132,7 @@ AIHealthcare/
 ├── scripts/
 │   ├── run_gcn.sh                    ← train + eval orchestration
 │   ├── run_loso_cv.sh                ← leave-one-site-out CV
+│   ├── run_explain.sh                ← attribute a checkpoint and write figures
 │   ├── train_gnn_baseline.py
 │   └── eval_gnn_baseline.py
 └── doc/
@@ -163,13 +164,17 @@ uv run python data/abide/scripts/build_aligned_dataset.py
 
 # Force CPU
 ./scripts/run_gcn.sh --cpu
+
+# Attribute any trained SimpleGCN; figures go in that experiment's folder
+./scripts/run_explain.sh --checkpoint outputs/gcn_baseline/final_model.pt \
+    --output-dir experiments/baseline_gcn_v1/figures
 ```
 
 ---
 
 ## Next Step
 
-**Key brain regions (Step 3)** — GNN attention, GNNExplainer, or gradient-based attribution to identify ROIs driving ASD vs control classification.
+**Run Step 3 on published checkpoints**, then use the ROI list for literature retrieval (Step 4).
 
 ---
 

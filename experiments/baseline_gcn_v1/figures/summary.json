@@ -1,0 +1,117 @@
+{
+  "checkpoint": "outputs/gcn_baseline/final_model.pt",
+  "output_dir": "experiments/baseline_gcn_v1/figures",
+  "model": "SimpleGCN",
+  "method": "integrated gradients on node features and |FC| adjacency",
+  "target": "asd",
+  "split": "val",
+  "n_subjects": 177,
+  "ig_steps": 24,
+  "explained_at": "2026-08-30T04:40:44.926040+00:00",
+  "top_rois": [
+    {
+      "name": "R SMG posterior",
+      "network": "Salience",
+      "attribution": -0.105793
+    },
+    {
+      "name": "R SMG anterior",
+      "network": "Salience",
+      "attribution": -0.105011
+    },
+    {
+      "name": "R Planum Temporale",
+      "network": "Auditory",
+      "attribution": -0.098721
+    },
+    {
+      "name": "R Heschl's Gyrus",
+      "network": "Auditory",
+      "attribution": -0.09846
+    },
+    {
+      "name": "R Insular Cortex",
+      "network": "Salience",
+      "attribution": -0.097779
+    },
+    {
+      "name": "R Parietal Operculum",
+      "network": "Somatomotor",
+      "attribution": -0.087548
+    },
+    {
+      "name": "R Superior Parietal Lobule",
+      "network": "DorsalAttention",
+      "attribution": -0.086278
+    },
+    {
+      "name": "L Central Opercular Cortex",
+      "network": "Somatomotor",
+      "attribution": -0.083246
+    },
+    {
+      "name": "L Planum Polare",
+      "network": "Auditory",
+      "attribution": -0.08271
+    },
+    {
+      "name": "L Heschl's Gyrus",
+      "network": "Auditory",
+      "attribution": -0.077513
+    },
+    {
+      "name": "L Cingulate posterior",
+      "network": "Default",
+      "attribution": 0.07648
+    },
+    {
+      "name": "R Superior Frontal Gyrus",
+      "network": "Frontoparietal",
+      "attribution": -0.071215
+    },
+    {
+      "name": "R ITG temporooccipital",
+      "network": "Visual",
+      "attribution": 0.068697
+    },
+    {
+      "name": "R Cingulate posterior",
+      "network": "Default",
+      "attribution": 0.068478
+    },
+    {
+      "name": "R Central Opercular Cortex",
+      "network": "Somatomotor",
+      "attribution": -0.065384
+    },
+    {
+      "name": "R SMA / Juxtapositional",
+      "network": "Somatomotor",
+      "attribution": -0.064179
+    },
+    {
+      "name": "Right Amygdala",
+      "network": "Limbic",
+      "attribution": 0.064116
+    },
+    {
+      "name": "Right Thalamus",
+      "network": "Subcortical",
+      "attribution": 0.064088
+    },
+    {
+      "name": "R Angular Gyrus",
+      "network": "Default",
+      "attribution": -0.063395
+    },
+    {
+      "name": "Right Putamen",
+      "network": "Subcortical",
+      "attribution": 0.063263
+    }
+  ],
+  "figures": {
+    "top_rois": "top_rois.png",
+    "chord": "chord.png"
+  }
+}

@@ -13,7 +13,8 @@ Each experiment gets a **folder** here with frozen config and results (safe to c
 experiments/<experiment_name>/
 ├── README.md        # methods, metrics, interpretation
 ├── run_config.json  # hyperparameters & data settings
-└── results.json     # metrics, confusion matrix
+├── results.json     # metrics, confusion matrix
+└── figures/         # GNN attribution plots from ./scripts/run_explain.sh
 
 outputs/<experiment_name>/   # local only (gitignored)
 ├── final_model.pt   # the reported model
