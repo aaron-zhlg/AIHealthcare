@@ -23,3 +23,7 @@ train-gcn = "aihealthcare.train:main"
 eval-gcn = "aihealthcare.eval:main"
 loso-cv-gcn = "aihealthcare.loso_cv:main"
 explain-gcn = "aihealthcare.explain:main"
+# Multi-agent medical research system
+med-research = "aihealthcare.agents.orchestrator:main"
+med-litsearch = "aihealthcare.agents.literature:main"
+med-trials = "aihealthcare.agents.trials:main"

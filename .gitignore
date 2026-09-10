@@ -4,5 +4,8 @@ __pycache__/
 .DS_Store
 outputs/
 
+# Secrets — never commit real API keys
+.env
+
 # Optional: large 4D fMRI downloads (~220 GB) — not tracked
 # data/abide/func/
