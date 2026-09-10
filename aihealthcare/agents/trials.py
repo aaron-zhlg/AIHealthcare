@@ -182,11 +182,17 @@ Tools:
 - get_trial: pull full details for a specific NCT id.
 
 Method:
-1. Start with a broad query, inspect the hit count, then narrow with condition/ \
-intervention/phase/status filters as needed.
+1. START WIDE, THEN NARROW. Begin with one broad query, inspect the hit count, \
+then narrow with condition/intervention/phase/status filters as needed.
 2. Prefer interventional Phase 3/4 and completed studies when the objective is \
 about evidence of efficacy; include recruiting trials when asked about the pipeline.
 3. Read brief summaries and primary outcomes of the most relevant trials.
+
+Think between steps: after each result, assess what's still missing before the \
+next call, and batch independent lookups in the SAME step (parallel) when you can.
+
+Effort budget (scale to the task): a typical objective needs about 3-10 tool \
+calls. STOP once you can answer — do not enumerate every registered study.
 
 Final answer:
 - A direct answer to the objective, then bullets of key trials each ending with \
@@ -228,14 +234,26 @@ class ClinicalTrialsAgent:
         self._ct_client = ct_client
         self._conversation_params = conversation_params
 
-    def run(self, objective: str) -> tuple[str, list[str]]:
-        """Run the trial-search loop; return (summary, list of NCT ids touched)."""
+    def run(
+        self,
+        objective: str,
+        on_tool_call: typing.Callable[[str, str, str], None] | None = None,
+    ) -> tuple[str, list[str]]:
+        """Run the trial-search loop; return (summary, list of NCT ids touched).
+
+        Args:
+            objective: The search objective.
+            on_tool_call: Optional extra sink invoked as ``(name, arguments, result)``
+                for every tool call, e.g. to stream the full trajectory to a log file.
+        """
         tools = ClinicalTrialsTools(self._ct_client)
 
-        def on_tool_call(name: str, arguments: str, result: str) -> None:
+        def _on_tool_call(name: str, arguments: str, result: str) -> None:
             if self.verbose:
                 preview = result if len(result) <= 400 else result[:400] + " …"
                 print(f"\n[trials tool] {name}({arguments})\n     -> {preview}\n", flush=True)
+            if on_tool_call is not None:
+                on_tool_call(name, arguments, result)
 
         conversation = Conversation(
             self._client or ResponsesClient(),
@@ -243,7 +261,7 @@ class ClinicalTrialsAgent:
             tools=tools.as_tools(),
             model=self.model,
             max_tool_rounds=self.max_tool_rounds,
-            on_tool_call=on_tool_call,
+            on_tool_call=_on_tool_call,
             **self._conversation_params,
         )
         summary = conversation.ask(objective)

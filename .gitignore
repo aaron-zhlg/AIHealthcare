@@ -9,3 +9,4 @@ outputs/
 
 # Optional: large 4D fMRI downloads (~220 GB) — not tracked
 # data/abide/func/
+/aihealthcare/agents/tests/

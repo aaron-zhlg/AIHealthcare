@@ -397,14 +397,27 @@ Tools available (PubMed via NCBI E-utilities):
 - find_related_articles: expand from a key PMID to its computed neighbors.
 
 Method (loop until confident, then stop):
-1. Decompose the goal into precise PubMed queries. Prefer field tags ([tiab], \
-[mesh], [pdat]) and boolean operators. Add date limits when recency matters.
+1. START WIDE, THEN NARROW. Begin with one short, broad query to map what's \
+available; then progressively narrow with field tags ([tiab], [mesh], [pdat]) \
+and boolean operators. Avoid long, over-specific queries up front — they return \
+too few results.
 2. Run search_pubmed. If there are too many hits (>~200) tighten the query; if \
 too few (0-2) loosen it, fix spelling, or drop over-specific tags. Iterate.
 3. Triage with summarize_articles, then fetch_abstracts for the ~5-12 most \
-relevant articles. Favor systematic reviews, meta-analyses, and RCTs when the \
-goal is about clinical evidence.
-4. Optionally use find_related_articles to fill gaps.
+relevant articles. Prefer high-quality primary/authoritative sources — \
+systematic reviews, meta-analyses, and RCTs — over weaker secondary sources when \
+the goal is about clinical evidence.
+4. Optionally use find_related_articles to fill a specific gap.
+
+Think between steps: after each tool result, briefly assess what you learned and \
+what is still missing, then decide the next query. When you need several \
+independent lookups, issue them in the SAME step (parallel tool calls) instead \
+of one at a time.
+
+Effort budget (scale to the task; do not over-invest): a typical objective needs \
+about 5-12 tool calls; a narrow fact-check needs fewer. STOP as soon as you can \
+answer the objective well — do NOT exhaustively enumerate every paper on the \
+topic. Breadth of coverage matters more than reading one more marginal article.
 
 Final answer (return only when done):
 - Start with a direct 2-4 sentence answer to the goal.
@@ -465,7 +478,7 @@ class MedicalLiteratureAgent:
         self._eutils_client = eutils_client
         self._conversation_params = conversation_params
 
-    def _build(self) -> tuple[Conversation, PubMedTools]:
+    def _build(self, extra_sink: typing.Callable[[str, str, str], None] | None = None) -> tuple[Conversation, PubMedTools]:
         tools = PubMedTools(self._eutils_client)
 
         def on_tool_call(name: str, arguments: str, result: str) -> None:
@@ -473,6 +486,8 @@ class MedicalLiteratureAgent:
             if self.verbose:
                 preview = result if len(result) <= 500 else result[:500] + " …"
                 print(f"\n[tool] {name}({arguments})\n     -> {preview}\n", flush=True)
+            if extra_sink is not None:
+                extra_sink(name, arguments, result)
 
         params = dict(self._conversation_params)
         if self.reasoning_effort:
@@ -489,10 +504,20 @@ class MedicalLiteratureAgent:
         )
         return conversation, tools
 
-    def run(self, goal: str) -> SearchReport:
-        """Execute the search-and-summarize loop for ``goal`` and return the report."""
+    def run(
+        self,
+        goal: str,
+        on_tool_call: typing.Callable[[str, str, str], None] | None = None,
+    ) -> SearchReport:
+        """Execute the search-and-summarize loop for ``goal`` and return the report.
+
+        Args:
+            goal: The research objective.
+            on_tool_call: Optional extra sink invoked as ``(name, arguments, result)``
+                for every tool call, e.g. to stream the full trajectory to a log file.
+        """
         self._last_tool_calls: list[dict[str, str]] = []
-        conversation, tools = self._build()
+        conversation, tools = self._build(on_tool_call)
         summary = conversation.ask(goal)
         return SearchReport(
             goal=goal,

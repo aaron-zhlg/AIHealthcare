@@ -31,12 +31,15 @@ narrow, run subagents in parallel, and degrade gracefully when a tool fails.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import re
 import sys
+import threading
 import typing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from aihealthcare.agents.deepseek import DeepSeekError, ResponsesClient, output_text
@@ -45,8 +48,11 @@ from aihealthcare.agents.trials import ClinicalTrialsAgent
 
 
 # --------------------------------------------------------------------------- #
-# Subagent interface + adapters
+# Subagent interface: specs (types the lead can instantiate) + workers
 # --------------------------------------------------------------------------- #
+
+#: Signature of a per-run trajectory sink: ``(tool_name, arguments_json, result)``.
+ToolCallSink = typing.Callable[[str, str, str], None]
 
 
 @dataclass
@@ -64,50 +70,76 @@ class SubAgentResult:
         return self.error is None
 
 
-class SubAgent(typing.Protocol):
-    """A worker the lead can delegate to.
+class SubAgentWorker(typing.Protocol):
+    """One live worker instance: runs a single objective in its own tool loop."""
 
-    Concrete subagents expose ``name`` and ``description`` (used by the lead to
-    route work) and a ``run_subtask`` method that executes one objective inside
-    its own tool-calling loop and returns a :class:`SubAgentResult`.
+    def run_subtask(
+        self, objective: str, on_tool_call: ToolCallSink | None = None
+    ) -> SubAgentResult: ...
+
+
+@dataclass
+class SubAgentSpec:
+    """A *type* of subagent the lead can instantiate on demand.
+
+    The lead sees ``name`` + ``description`` to decide routing, then calls
+    :meth:`create` **once per task**. This is what lets the lead autonomously:
+    spin up the same type multiple times (one independent instance, with its own
+    context window, per sub-question), or skip a type entirely when the goal does
+    not need it. A spec is a lightweight factory; nothing is instantiated until
+    the lead actually assigns work to it.
     """
 
     name: str
     description: str
+    factory: typing.Callable[[], SubAgentWorker]
 
-    def run_subtask(self, objective: str) -> SubAgentResult: ...
+    def create(self) -> SubAgentWorker:
+        return self.factory()
 
 
-class LiteratureSubAgent:
-    """Adapter exposing :class:`MedicalLiteratureAgent` as a :class:`SubAgent`."""
+class LiteratureWorker:
+    """A single PubMed literature worker instance (fresh context per task)."""
 
-    def __init__(self, agent: MedicalLiteratureAgent | None = None, **kwargs: Any):
-        self.agent = agent or MedicalLiteratureAgent(**kwargs)
-        self.name = self.agent.name
-        self.description = self.agent.description
+    def __init__(self, agent: MedicalLiteratureAgent):
+        self.agent = agent
 
-    def run_subtask(self, objective: str) -> SubAgentResult:
-        report = self.agent.run(objective)
+    def run_subtask(self, objective: str, on_tool_call: ToolCallSink | None = None) -> SubAgentResult:
+        report = self.agent.run(objective, on_tool_call=on_tool_call)
         sources = [f"PMID:{p}" for p in report.pmids]
-        return SubAgentResult(self.name, objective, report.summary, sources)
+        return SubAgentResult(MedicalLiteratureAgent.name, objective, report.summary, sources)
 
 
-class TrialsSubAgent:
-    """Adapter exposing :class:`ClinicalTrialsAgent` as a :class:`SubAgent`."""
+class TrialsWorker:
+    """A single ClinicalTrials.gov worker instance (fresh context per task)."""
 
-    def __init__(self, agent: ClinicalTrialsAgent | None = None, **kwargs: Any):
-        self.agent = agent or ClinicalTrialsAgent(**kwargs)
-        self.name = self.agent.name
-        self.description = self.agent.description
+    def __init__(self, agent: ClinicalTrialsAgent):
+        self.agent = agent
 
-    def run_subtask(self, objective: str) -> SubAgentResult:
-        summary, ncts = self.agent.run(objective)
-        return SubAgentResult(self.name, objective, summary, list(ncts))
+    def run_subtask(self, objective: str, on_tool_call: ToolCallSink | None = None) -> SubAgentResult:
+        summary, ncts = self.agent.run(objective, on_tool_call=on_tool_call)
+        return SubAgentResult(ClinicalTrialsAgent.name, objective, summary, list(ncts))
 
 
-def default_subagents(**kwargs: Any) -> list[SubAgent]:
-    """The medical subagent roster shipped with the system."""
-    return [LiteratureSubAgent(**kwargs), TrialsSubAgent(**kwargs)]
+def default_subagent_specs(**kwargs: Any) -> list[SubAgentSpec]:
+    """The medical subagent *types* shipped with the system.
+
+    Each spec's factory builds a brand-new agent instance per task, so the lead
+    can instantiate any number of them (or none). ``kwargs`` (e.g. ``verbose``,
+    ``model``) are forwarded to every agent constructor.
+    """
+    return [
+        SubAgentSpec(
+            MedicalLiteratureAgent.name,
+            MedicalLiteratureAgent.description,
+            lambda: LiteratureWorker(MedicalLiteratureAgent(**kwargs)),
+        ),
+        SubAgentSpec(
+            ClinicalTrialsAgent.name,
+            ClinicalTrialsAgent.description,
+            lambda: TrialsWorker(ClinicalTrialsAgent(**kwargs)),
+        ),
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -117,10 +149,22 @@ def default_subagents(**kwargs: Any) -> list[SubAgent]:
 
 @dataclass
 class Assignment:
-    """One subtask the lead hands to a specific subagent."""
+    """One subtask the lead hands to a specific subagent.
+
+    Following the article's delegation advice, an assignment carries not just an
+    objective but also an explicit ``output_format`` describing what the worker
+    should return, which reduces misinterpretation and duplicated work.
+    """
 
     subagent: str
     objective: str
+    output_format: str = ""
+
+    def task_prompt(self) -> str:
+        """The full instruction handed to the worker (objective + output format)."""
+        if self.output_format:
+            return f"{self.objective}\n\nRequired output format:\n{self.output_format}"
+        return self.objective
 
 
 @dataclass
@@ -149,6 +193,11 @@ class ResearchReport:
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+
+
+def _ts() -> str:
+    """A compact local timestamp prefix for log lines."""
+    return _dt.datetime.now().strftime("%H:%M:%S")
 
 
 def _extract_json(text: str) -> Any:
@@ -191,34 +240,55 @@ questions:
 - Give each subagent a DISTINCT slice of the problem so they do not duplicate \
 work. Each task must include a precise objective and, implicitly, its output \
 expectation.
-- Route each task to the most appropriate subagent by its described strengths.
+- Route each task to the most appropriate subagent TYPE by its described strengths.
+- You control instantiation. You MAY assign the SAME subagent type to several \
+tasks — each runs as a SEPARATE instance with its own context window — when the \
+goal has multiple independent sub-questions of that kind (e.g. two distinct \
+literature sub-questions -> two pubmed_literature tasks). You MAY also OMIT any \
+subagent type the goal does not need (e.g. no clinical_trials task if trials are \
+irrelevant). Only spin up what the goal actually requires.
 - Start wide, then narrow: prefer tasks that first map the landscape.
 
-Available subagents:
+Available subagent types:
 {roster}
+
+For EACH task give: the subagent type, a detailed self-contained objective, and \
+an explicit output_format telling the worker exactly what to return (fields, \
+structure, and that every claim must carry its source id). Clear task boundaries \
+prevent duplicated work and gaps.
 
 Respond with ONLY a JSON object of this shape (no prose, no code fence):
 {{
   "complexity": "simple|moderate|complex",
   "reasoning": "one or two sentences on your decomposition",
   "assignments": [
-    {{"subagent": "<one of the subagent names above>", "objective": "<detailed, self-contained task>"}}
+    {{
+      "subagent": "<one of the subagent names above>",
+      "objective": "<detailed, self-contained task with clear boundaries>",
+      "output_format": "<what the worker should return, e.g. 'a structured bullet list of findings, each with (PMID: ...); note evidence strength'>"
+    }}
   ]
 }}
 """
 
 EVALUATOR_INSTRUCTIONS = """\
 You are the lead researcher coordinating a medical multi-agent system. You have \
-received findings from your subagents for the user's goal. Decide whether the \
-evidence is sufficient to write a complete, well-supported answer, or whether ONE \
-more round of targeted research is warranted.
+received findings from the subagents you dispatched. Inspect the collected data \
+and decide, autonomously, whether it is sufficient to write a complete, \
+well-supported answer — or whether the data has revealed a NEW sub-goal or gap \
+worth spawning more subagents for.
 
-Be judicious: only request more research to close a real, important gap (e.g. a \
-missing mechanism, a contradicting result to resolve, or an un-searched angle the \
-goal clearly requires). Do NOT request more research just to be thorough. Never \
-exceed a small number of follow-ups.
+You may dynamically spin up additional subagents now, based on what the data \
+showed. This includes: a subagent TYPE you have not used yet (e.g. the findings \
+mention a pivotal trial, so spawn a clinical_trials task), or additional \
+instances of a type you already used, each with a sharp, gap-closing objective.
 
-Available subagents:
+Be judicious: only spawn more work to close a REAL, important gap (a missing \
+mechanism, a contradiction to resolve, a newly surfaced entity/trial, or an \
+un-searched angle the goal clearly requires). Do NOT spawn more just to be \
+thorough, and keep the number of follow-ups small.
+
+Available subagent types:
 {roster}
 
 Respond with ONLY a JSON object (no prose, no code fence):
@@ -226,7 +296,11 @@ Respond with ONLY a JSON object (no prose, no code fence):
   "complete": true|false,
   "reasoning": "brief justification",
   "follow_up": [
-    {{"subagent": "<name>", "objective": "<specific gap-closing task>"}}
+    {{
+      "subagent": "<name>",
+      "objective": "<specific gap-closing task with clear boundaries>",
+      "output_format": "<what the worker should return>"
+    }}
   ]
 }}
 If complete is true, "follow_up" must be an empty list.
@@ -265,25 +339,35 @@ Return the full, final report text.
 
 
 class LeadResearcher:
-    """Orchestrator implementing the plan → dispatch → evaluate → synthesize loop."""
+    """Orchestrator implementing the plan → dispatch → evaluate → synthesize loop.
+
+    The lead autonomously decides which subagent *types* to instantiate, how many
+    of each, and when to stop. After each wave of parallel subagents it inspects
+    the collected findings and may **dynamically spawn** more subagents to pursue
+    a newly discovered sub-goal (a new type, or more instances) — repeating until
+    it judges the evidence sufficient or the ``max_rounds`` safety cap is hit.
+    """
 
     def __init__(
         self,
-        subagents: list[SubAgent] | None = None,
+        subagents: list[SubAgentSpec] | None = None,
         *,
         client: ResponsesClient | None = None,
         lead_model: str | None = None,
-        max_rounds: int = 2,
+        max_rounds: int = 3,
         max_parallel: int = 5,
         add_citations: bool = True,
         verbose: bool = True,
         reasoning_effort: str | None = None,
+        log_dir: str | Path | None = None,
     ):
-        self.subagents: dict[str, SubAgent] = {}
-        for sa in subagents if subagents is not None else default_subagents(verbose=verbose):
-            self.subagents[sa.name] = sa
-        if not self.subagents:
-            raise ValueError("at least one subagent is required")
+        # Registry of subagent *types* (specs). The lead instantiates them on
+        # demand, so nothing here is a live agent until work is assigned.
+        self.specs: dict[str, SubAgentSpec] = {}
+        for spec in subagents if subagents is not None else default_subagent_specs(verbose=verbose):
+            self.specs[spec.name] = spec
+        if not self.specs:
+            raise ValueError("at least one subagent spec is required")
         self.client = client or ResponsesClient()
         self.lead_model = lead_model
         self.max_rounds = max_rounds
@@ -291,18 +375,31 @@ class LeadResearcher:
         self.add_citations = add_citations
         self.verbose = verbose
         self.reasoning_effort = reasoning_effort
+        # When set, the lead writes logs/lead.log and each subagent instance
+        # streams its full trajectory to logs/<type>_<NNN>.log, where NNN is a
+        # per-type instance counter (the lead may init several of one type).
+        self.log_dir = Path(log_dir) if log_dir else None
+        self._lead_log_lock = threading.Lock()
+        self._counter_lock = threading.Lock()
+        self._instance_counts: dict[str, int] = {}
+        if self.log_dir:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
 
     # -- observability ----------------------------------------------------- #
 
     def _log(self, message: str) -> None:
         if self.verbose:
             print(message, file=sys.stderr, flush=True)
+        if self.log_dir:
+            with self._lead_log_lock:
+                with (self.log_dir / "lead.log").open("a", encoding="utf-8") as fh:
+                    fh.write(f"{_ts()} {message}\n")
 
     # -- lead-agent LLM calls ---------------------------------------------- #
 
     @property
     def _roster(self) -> str:
-        return "\n".join(f"- {sa.name}: {sa.description}" for sa in self.subagents.values())
+        return "\n".join(f"- {spec.name}: {spec.description}" for spec in self.specs.values())
 
     def _think(self, instructions: str, prompt: str) -> str:
         params: dict[str, Any] = {}
@@ -320,7 +417,7 @@ class LeadResearcher:
         complexity = str(data.get("complexity", "unknown"))
         assignments = self._coerce_assignments(data.get("assignments", []))
         if not assignments:  # never leave the lead with nothing to do
-            assignments = [Assignment(next(iter(self.subagents)), goal)]
+            assignments = [Assignment(next(iter(self.specs)), goal)]
         return complexity, assignments
 
     def _evaluate(self, goal: str, results: list[SubAgentResult]) -> list[Assignment]:
@@ -341,11 +438,12 @@ class LeadResearcher:
                 continue
             name = str(item.get("subagent", "")).strip()
             objective = str(item.get("objective", "")).strip()
+            output_format = str(item.get("output_format", "")).strip()
             if not objective:
                 continue
-            if name not in self.subagents:  # route unknown names to the first agent
-                name = next(iter(self.subagents))
-            out.append(Assignment(name, objective))
+            if name not in self.specs:  # route unknown names to the first spec
+                name = next(iter(self.specs))
+            out.append(Assignment(name, objective, output_format))
         return out[: self.max_parallel]
 
     def _synthesize(self, goal: str, results: list[SubAgentResult]) -> str:
@@ -363,16 +461,61 @@ class LeadResearcher:
 
     # -- dispatch (parallel workers) --------------------------------------- #
 
-    def _dispatch(self, assignments: list[Assignment]) -> list[SubAgentResult]:
+    def _trajectory_sink(
+        self, round_idx: int, index: int, a: Assignment
+    ) -> tuple[ToolCallSink | None, typing.Callable[[SubAgentResult], None]]:
+        """Return (per-tool-call sink, finalizer) that stream one subagent
+        instance's full trajectory to ``logs/<type>_<NNN>.log``, where NNN counts
+        instances of that type across the whole run. No-ops without ``log_dir``."""
+        if not self.log_dir:
+            return None, lambda result: None
+
+        with self._counter_lock:
+            self._instance_counts[a.subagent] = self._instance_counts.get(a.subagent, 0) + 1
+            instance_no = self._instance_counts[a.subagent]
+
+        path = self.log_dir / f"{a.subagent}_{instance_no:03d}.log"
+        fh = path.open("w", encoding="utf-8")
+        fh.write(f"{_ts()} === subagent: {a.subagent} #{instance_no:03d} (round {round_idx}) ===\n")
+        fh.write(f"{_ts()} OBJECTIVE:\n{a.objective}\n\n")
+        fh.flush()
+        lock = threading.Lock()
+        step = {"n": 0}
+
+        def sink(name: str, arguments: str, result: str) -> None:
+            with lock:
+                step["n"] += 1
+                fh.write(f"{_ts()} [tool #{step['n']}] {name}({arguments})\n")
+                fh.write(f"{_ts()}   -> {result}\n\n")
+                fh.flush()
+
+        def closer(result: SubAgentResult) -> None:
+            with lock:
+                if result.error:
+                    fh.write(f"{_ts()} [FAILED] {result.error}\n")
+                else:
+                    fh.write(f"{_ts()} [DONE] {step['n']} tool call(s), {len(result.sources)} source(s)\n")
+                    fh.write(f"{_ts()} SOURCES: {', '.join(result.sources) or '(none)'}\n\n")
+                    fh.write(f"{_ts()} FINDINGS:\n{result.findings}\n")
+                fh.close()
+
+        return sink, closer
+
+    def _dispatch(self, assignments: list[Assignment], round_idx: int = 1) -> list[SubAgentResult]:
         results: list[SubAgentResult] = [None] * len(assignments)  # type: ignore[list-item]
 
         def work(index: int, a: Assignment) -> tuple[int, SubAgentResult]:
-            agent = self.subagents[a.subagent]
-            self._log(f"   → [{a.subagent}] {a.objective}")
+            # Instantiate a fresh worker for this task (this is the lead "init"-ing
+            # a subagent on demand — same type can be spun up many times).
+            worker = self.specs[a.subagent].create()
+            self._log(f"   → init [{a.subagent}] {a.objective}")
+            sink, closer = self._trajectory_sink(round_idx, index, a)
             try:
-                return index, agent.run_subtask(a.objective)
+                result = worker.run_subtask(a.task_prompt(), on_tool_call=sink)
             except Exception as exc:  # a failing worker must not sink the run
-                return index, SubAgentResult(a.subagent, a.objective, "", error=str(exc))
+                result = SubAgentResult(a.subagent, a.objective, "", error=str(exc))
+            closer(result)
+            return index, result
 
         workers = min(self.max_parallel, len(assignments)) or 1
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -386,8 +529,21 @@ class LeadResearcher:
 
     # -- public API -------------------------------------------------------- #
 
+    def _reset_logs(self) -> None:
+        """Clear historical logs so each run starts a clean trajectory."""
+        with self._counter_lock:
+            self._instance_counts.clear()
+        if self.log_dir:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            for old in self.log_dir.glob("*.log"):
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+
     def research(self, goal: str) -> ResearchReport:
         """Run the full multi-agent loop for ``goal`` and return the final report."""
+        self._reset_logs()
         self._log(f"\n[lead] planning: {goal}")
         complexity, assignments = self._plan(goal)
         self._log(f"[lead] complexity={complexity}; {len(assignments)} initial task(s)")
@@ -397,15 +553,17 @@ class LeadResearcher:
         for rnd in range(1, self.max_rounds + 1):
             rounds = rnd
             self._log(f"[lead] round {rnd}: dispatching {len(assignments)} subagent(s) in parallel")
-            all_results.extend(self._dispatch(assignments))
+            all_results.extend(self._dispatch(assignments, rnd))
 
             if rnd >= self.max_rounds:
+                self._log(f"[lead] reached max_rounds={self.max_rounds}; proceeding to synthesis")
                 break
             follow_up = self._evaluate(goal, all_results)
             if not follow_up:
-                self._log("[lead] evaluation: sufficient, proceeding to synthesis")
+                self._log("[lead] evaluation: evidence sufficient, proceeding to synthesis")
                 break
-            self._log(f"[lead] evaluation: {len(follow_up)} follow-up task(s)")
+            spawned = ", ".join(a.subagent for a in follow_up)
+            self._log(f"[lead] evaluation: dynamically spawning {len(follow_up)} subagent(s): {spawned}")
             assignments = follow_up
 
         self._log("[lead] synthesizing final report")

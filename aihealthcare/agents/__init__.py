@@ -26,13 +26,14 @@ from aihealthcare.agents.literature import MedicalLiteratureAgent, SearchReport
 from aihealthcare.agents.orchestrator import (
     Assignment,
     LeadResearcher,
-    LiteratureSubAgent,
+    LiteratureWorker,
     ResearchReport,
-    SubAgent,
     SubAgentResult,
-    TrialsSubAgent,
+    SubAgentSpec,
+    SubAgentWorker,
+    TrialsWorker,
     deep_research,
-    default_subagents,
+    default_subagent_specs,
 )
 from aihealthcare.agents.trials import ClinicalTrialsAgent
 
@@ -45,11 +46,12 @@ __all__ = [
     "ClinicalTrialsAgent",
     "LeadResearcher",
     "ResearchReport",
-    "SubAgent",
+    "SubAgentSpec",
+    "SubAgentWorker",
     "SubAgentResult",
     "Assignment",
-    "LiteratureSubAgent",
-    "TrialsSubAgent",
-    "default_subagents",
+    "LiteratureWorker",
+    "TrialsWorker",
+    "default_subagent_specs",
     "deep_research",
 ]
