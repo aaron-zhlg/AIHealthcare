@@ -1,0 +1,314 @@
+"""Experimenter sub-agent: run a gated trial and write an honest insight."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from typing import Any
+
+from orchestra import SubAgent
+
+from gnnresearch.paths import GATES_PATH, LEDGER_PATH, PROGRAM_PATH, REPO_ROOT, TRIALS_DIR
+from gnnresearch.promote import promote
+from gnnresearch.protocol import protocol_notes, protocol_ok
+from gnnresearch.workspace import (
+    apply_trial_outcome,
+    load_workspace,
+    required_stage,
+    save_insight,
+)
+
+INSTRUCTIONS = """\
+You measure a code change and explain what the number means. You do not edit \
+model code.
+
+Rules:
+- Read the workspace first. Run the stage it requires; do not skip ahead.
+- Official metric is final-epoch auc_mean. best_auc_mean is diagnostic only.
+- A 2026-08-27 revision showed that picking the best epoch on the evaluation \
+set inflated LOSO from 0.623 to 0.707 (~0.07 AUC). If a result is not \
+final-epoch, it is not an improvement.
+- screen PASS is a filter, not evidence of a better model. Only loso-full PASS \
+justifies promotion.
+- On FAIL, say what the result rules out. On PASS, say the margin versus the gate.
+- Never claim a win from a protocol failure.
+- After run_trial, call store_insight with a coder-actionable writeup: what was \
+tried, final-epoch AUC vs gate, what this rules out, and the ONE next code change \
+worth trying (or "promote to next stage" if the same code should continue).
+
+Return a short structured insight the coder can act on.
+"""
+
+STAGE_TIMEOUT = {
+    "screen": 15 * 60,
+    "loso-subset": 20 * 60,
+    "loso-full": 40 * 60,
+}
+
+
+class ExperimenterTools:
+    """Run autoresearch.trial and interpret the gate, not the prose."""
+
+    def __init__(self, *, promote_on_pass: bool = True, push: bool = True):
+        self.promote_on_pass = promote_on_pass
+        self.push = push
+        self.touched: list[str] = []
+
+    def as_tools(self) -> list:
+        return [
+            self.read_workspace,
+            self.read_gates,
+            self.read_ledger,
+            self.read_program,
+            self.run_trial,
+            self.read_result,
+            self.store_insight,
+        ]
+
+    def sources(self) -> list[str]:
+        return list(self.touched)
+
+    def read_workspace(self) -> dict[str, Any]:
+        """Return the current write→run session state (status, hypothesis, files)."""
+        return load_workspace()
+
+    def read_gates(self) -> dict[str, Any]:
+        """Return the pass thresholds and measured baselines."""
+        return json.loads(GATES_PATH.read_text(encoding="utf-8"))
+
+    def read_program(self) -> str:
+        """Return the autoresearch agent rules (search space, no-leak protocol)."""
+        return PROGRAM_PATH.read_text(encoding="utf-8")
+
+    def read_ledger(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Return the most recent trial records so dead ends are not repeated.
+
+        Args:
+            limit: Maximum number of trailing ledger rows (1-100).
+        """
+        limit = max(1, min(int(limit), 100))
+        if not LEDGER_PATH.exists():
+            return []
+        rows = [
+            json.loads(line)
+            for line in LEDGER_PATH.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        return rows[-limit:]
+
+    def read_result(self, name: str, stage: str) -> dict[str, Any]:
+        """Load a written trial result.json.
+
+        Args:
+            name: Trial slug, e.g. 'iter1_class-weight'.
+            stage: 'screen', 'loso-subset', or 'loso-full'.
+        """
+        path = TRIALS_DIR / f"{stage}__{name}" / "result.json"
+        if not path.is_file():
+            raise FileNotFoundError(str(path.relative_to(REPO_ROOT)))
+        self.touched.append(str(path.relative_to(REPO_ROOT)))
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def run_trial(self, note: str = "") -> dict[str, Any]:
+        """Train and score the current code at the workspace-required stage.
+
+        The stage is taken from the workspace (screen → loso-subset → loso-full).
+        You cannot pick a more expensive stage yourself.
+
+        Args:
+            note: Optional extra note stored on the result (defaults to hypothesis).
+        """
+        workspace = load_workspace()
+        stage = required_stage(workspace)
+        if stage is None:
+            return {
+                "ok": False,
+                "error": (
+                    f"no trial to run (status={workspace.get('status')}). "
+                    "The coder must land a new one-thing change first."
+                ),
+                "workspace": workspace,
+            }
+        name = str(workspace.get("current_name") or "").strip()
+        if not name:
+            return {"ok": False, "error": "workspace has no current_name"}
+
+        hypothesis = note.strip() or str(workspace.get("hypothesis") or "")
+        command = [
+            sys.executable,
+            "-m",
+            "autoresearch.trial",
+            "--name",
+            name,
+            "--stage",
+            stage,
+            "--note",
+            hypothesis,
+        ]
+        ran = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=STAGE_TIMEOUT[stage],
+            env=os.environ.copy(),
+            check=False,
+        )
+        result_path = TRIALS_DIR / f"{stage}__{name}" / "result.json"
+        if not result_path.is_file():
+            return {
+                "ok": False,
+                "error": "trial produced no result.json",
+                "exit_code": ran.returncode,
+                "stdout_tail": ran.stdout[-2000:],
+                "stderr_tail": ran.stderr[-2000:],
+            }
+
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        self.touched.append(str(result_path.relative_to(REPO_ROOT)))
+        notes = protocol_notes(result)
+        failed_protocol = not protocol_ok(result)
+        if failed_protocol:
+            result["verdict"] = {
+                **result.get("verdict", {}),
+                "passed": False,
+                "protocol_failed": True,
+                "protocol_notes": notes,
+            }
+
+        workspace = apply_trial_outcome(
+            stage,
+            name,
+            result["verdict"],
+            result.get("summary") or {},
+            protocol_failed=failed_protocol,
+        )
+
+        promotion = None
+        if (
+            self.promote_on_pass
+            and stage == "loso-full"
+            and result["verdict"].get("passed")
+            and not failed_protocol
+        ):
+            promotion = promote(result, push=self.push)
+
+        summary = result.get("summary") or {}
+        verdict = result.get("verdict") or {}
+        hint = _insight_hint(stage, verdict, failed_protocol, workspace)
+        payload = {
+            "ok": True,
+            "name": name,
+            "stage": stage,
+            "hypothesis": hypothesis,
+            "files_changed": workspace.get("files_changed"),
+            "auc_mean": summary.get("auc_mean"),
+            "auc_std": summary.get("auc_std"),
+            "best_auc_mean": summary.get("best_auc_mean"),
+            "best_auc_is_diagnostic_only": True,
+            "model_selection": result.get("model_selection"),
+            "gate": {
+                "metric": verdict.get("metric"),
+                "threshold": verdict.get("threshold"),
+                "observed": verdict.get("observed"),
+                "margin": verdict.get("margin"),
+                "passed": verdict.get("passed"),
+            },
+            "protocol_notes": notes,
+            "workspace_status": workspace.get("status"),
+            "promotion": promotion,
+            "insight_hint": hint,
+            "exit_code": ran.returncode,
+        }
+        save_insight(
+            {
+                "name": name,
+                "stage": stage,
+                "hypothesis": hypothesis,
+                "auc_mean": summary.get("auc_mean"),
+                "margin": verdict.get("margin"),
+                "passed": bool(verdict.get("passed")) and not failed_protocol,
+                "ruled_out": None if payload["gate"]["passed"] else hypothesis,
+                "hint": hint,
+                "narrative": "",
+                "next_code_change": "",
+            }
+        )
+        return payload
+
+    def store_insight(
+        self,
+        narrative: str,
+        next_code_change: str = "",
+        ruled_out: str = "",
+    ) -> dict[str, Any]:
+        """Save a coder-actionable insight into the workspace.
+
+        The next coder instance is fresh and cannot see this conversation.
+        This write-up is how it knows what to try next.
+
+        Args:
+            narrative: What was measured, final-epoch AUC vs the gate, and why.
+            next_code_change: One concrete code change to try next, or empty if
+                the same code should continue to the next evaluation stage.
+            ruled_out: What this result eliminates, if anything.
+        """
+        workspace = load_workspace()
+        insight = dict(workspace.get("last_insight") or {})
+        insight["narrative"] = narrative.strip()
+        insight["next_code_change"] = next_code_change.strip()
+        insight["ruled_out"] = ruled_out.strip() or insight.get("ruled_out")
+        save_insight(insight)
+        return {"ok": True, "last_insight": insight}
+
+
+def _insight_hint(
+    stage: str,
+    verdict: dict[str, Any],
+    failed_protocol: bool,
+    workspace: dict[str, Any],
+) -> str:
+    if failed_protocol:
+        return "Protocol failed. Discard the number. Do not iterate on it."
+    if not verdict.get("passed"):
+        return (
+            f"{stage} FAIL (margin {verdict.get('margin')}). "
+            "This change is ruled out at this stage. Next: coder, one new mechanism."
+        )
+    if stage == "screen":
+        return (
+            "screen PASS is only a filter. Do not claim the GNN is better. "
+            "Next: experimenter runs loso-subset on the same code."
+        )
+    if stage == "loso-subset":
+        return (
+            "loso-subset PASS. Next: experimenter runs loso-full on the same code. "
+            "Still not a published improvement."
+        )
+    return (
+        "loso-full PASS. A review branch may have been opened. "
+        "A human must review before merge. Do not raise gates.json."
+    )
+
+
+class ExperimenterAgent(SubAgent):
+    """Runs one gated trial and returns an insight."""
+
+    name = "experimenter"
+    description = (
+        "Trains the current GNN code with autoresearch.trial, scores final-epoch "
+        "AUC against the gates, and returns what the result rules in or out. "
+        "Use after the coder has landed a change, or to promote a passing change "
+        "to the next stage. Not for writing model code."
+    )
+    instructions = INSTRUCTIONS
+
+    def __init__(self, *, promote: bool = True, push: bool = True, **kwargs: Any):
+        super().__init__(**kwargs)
+        self._promote = promote
+        self._push = push
+
+    def create_tools(self) -> ExperimenterTools:
+        return ExperimenterTools(promote_on_pass=self._promote, push=self._push)

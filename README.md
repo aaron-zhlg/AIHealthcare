@@ -94,6 +94,19 @@ trial, runs it on a throwaway branch, and the branch survives only if it clears 
 See [autoresearch/README.md](autoresearch/README.md) for the workflow and
 [autoresearch/program.md](autoresearch/program.md) for the agent's rules.
 
+A two-agent loop can drive that search: a **coder** edits training/model code,
+an **experimenter** runs a gated trial and writes an insight, then a fresh coder
+reads that insight and makes the next one-thing change.
+
+```bash
+uv run python -m gnnresearch
+```
+
+Official scores are always **final-epoch** AUC. Best-epoch numbers are diagnostic
+only — selecting on the evaluation set is the leak that once reported LOSO 0.707
+instead of 0.623. A `loso-full` PASS opens `experiment/trial-<slug>` for review; it
+does not merge to `main` or raise `gates.json`.
+
 ---
 
 ## Current Data
