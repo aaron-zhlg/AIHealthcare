@@ -13,11 +13,11 @@ dependencies = [
     "orchestra-agents",
 ]
 
-# orchestra lives as a sibling repo; consume it as a local path dependency.
-# Swap this for a git/PyPI source once orchestra is published, e.g.
-#   orchestra-agents = { git = "https://github.com/aaron-zhlg/orchestra" }
+# orchestra is pulled straight from its public GitHub repo (tracks main).
+# Pin a specific release later with `tag = "vX.Y.Z"` (or `rev = "<sha>"`) for
+# reproducibility, or drop this block entirely once it's published to PyPI.
 [tool.uv.sources]
-orchestra-agents = { path = "../orchestra" }
+orchestra-agents = { git = "https://github.com/aaron-zhlg/orchestra", branch = "main" }
 
 [build-system]
 requires = ["hatchling"]
