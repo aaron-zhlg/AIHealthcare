@@ -23,21 +23,21 @@ def _env_path(*names: str) -> str | None:
 
 
 def workspace_path() -> Path:
-    override = _env_path("AUTORESEARCH_LOOP_WORKSPACE", "GNNRESEARCH_WORKSPACE")
+    override = _env_path("AUTORESEARCH_LOOP_WORKSPACE")
     if override:
         return Path(override)
     return REPO_ROOT / "outputs" / "autoresearch" / "loop" / "workspace.json"
 
 
 def trials_dir() -> Path:
-    override = _env_path("AUTORESEARCH_LOOP_TRIALS_DIR", "GNNRESEARCH_TRIALS_DIR")
+    override = _env_path("AUTORESEARCH_LOOP_TRIALS_DIR")
     if override:
         return Path(override)
     return REPO_ROOT / "outputs" / "autoresearch" / "trials"
 
 
 def results_dir() -> Path:
-    override = _env_path("AUTORESEARCH_LOOP_RESULTS_DIR", "GNNRESEARCH_RESULTS_DIR")
+    override = _env_path("AUTORESEARCH_LOOP_RESULTS_DIR")
     if override:
         return Path(override)
     return REPO_ROOT / "autoresearch" / "results"
@@ -50,7 +50,7 @@ RESULTS_DIR = results_dir()
 
 
 def _writable_extra() -> Path | None:
-    raw = os.environ.get("AUTORESEARCH_LOOP_WRITE_DIR") or os.environ.get("GNNRESEARCH_WRITE_DIR")
+    raw = os.environ.get("AUTORESEARCH_LOOP_WRITE_DIR")
     return Path(raw).resolve() if raw else None
 
 

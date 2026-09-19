@@ -13,11 +13,11 @@ import traceback
 from pathlib import Path
 
 # Isolated session files, set before importing workspace-backed modules.
-_TMP = Path(tempfile.mkdtemp(prefix="gnnresearch-loop-"))
-os.environ["GNNRESEARCH_WORKSPACE"] = str(_TMP / "workspace.json")
-os.environ["GNNRESEARCH_TRIALS_DIR"] = str(_TMP / "trials")
-os.environ["GNNRESEARCH_RESULTS_DIR"] = str(_TMP / "results")
-os.environ["GNNRESEARCH_WRITE_DIR"] = str(_TMP)
+_TMP = Path(tempfile.mkdtemp(prefix="autoresearch-loop-"))
+os.environ["AUTORESEARCH_LOOP_WORKSPACE"] = str(_TMP / "workspace.json")
+os.environ["AUTORESEARCH_LOOP_TRIALS_DIR"] = str(_TMP / "trials")
+os.environ["AUTORESEARCH_LOOP_RESULTS_DIR"] = str(_TMP / "results")
+os.environ["AUTORESEARCH_LOOP_WRITE_DIR"] = str(_TMP)
 
 from autoresearch.loop.coder import CodeTools  # noqa: E402
 from autoresearch.loop.experimenter import ExperimenterTools, measurement_coverage  # noqa: E402
