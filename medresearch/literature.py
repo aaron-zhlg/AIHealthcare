@@ -15,11 +15,11 @@ are my tools".
     export DEEPSEEK_API_KEY=sk-...
     # optional, lifts the NCBI rate limit from 3 to 10 requests/second:
     export NCBI_API_KEY=...
-    uv run python -m aihealthcare.agents.literature "What is the evidence that GLP-1 agonists reduce cardiovascular events in type 2 diabetes?"
+    uv run python -m medresearch.literature "What is the evidence that GLP-1 agonists reduce cardiovascular events in type 2 diabetes?"
 
 Programmatic use as a sub-agent::
 
-    from aihealthcare.agents.literature import MedicalLiteratureAgent
+    from medresearch.literature import MedicalLiteratureAgent
 
     agent = MedicalLiteratureAgent()
     result = agent.run("Recent RCTs on semaglutide for weight loss in non-diabetics")
@@ -47,7 +47,7 @@ from orchestra import SubAgent
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 PUBMED_UI = "https://pubmed.ncbi.nlm.nih.gov"
-TOOL_NAME = "aihealthcare-litsearch"
+TOOL_NAME = "medresearch-litsearch"
 
 # The whole conversation (including every abstract fetched so far) is resent on
 # each step, so capping abstract length keeps per-step latency and cost in check.

@@ -1,7 +1,7 @@
 """Clinical-trials search sub-agent, powered by the ClinicalTrials.gov API v2.
 
 A second specialized worker for the multi-agent research system (see
-:mod:`aihealthcare.agents.orchestrator`). Where :mod:`aihealthcare.agents.literature`
+:mod:`medresearch.orchestrator`). Where :mod:`medresearch.literature`
 searches the published literature on PubMed, this agent searches *registered
 clinical trials* — study status, phase, interventions, eligibility, and outcomes.
 
@@ -10,7 +10,7 @@ lives in a self-contained toolset (:class:`ClinicalTrialsTools`); the sub-agent
 just names it, describes it, and points its prompt at those tools.
 
     export DEEPSEEK_API_KEY=sk-...
-    uv run python -m aihealthcare.agents.trials "Phase 3 trials of semaglutide for obesity"
+    uv run python -m medresearch.trials "Phase 3 trials of semaglutide for obesity"
 
 Reference: ClinicalTrials.gov REST API v2, https://clinicaltrials.gov/data-api/api
 """
@@ -37,7 +37,7 @@ class ClinicalTrialsError(RuntimeError):
 class ClinicalTrialsClient:
     """Minimal stdlib client for the ClinicalTrials.gov v2 REST API."""
 
-    def __init__(self, *, timeout: float = 30.0, max_retries: int = 2, user_agent: str = "aihealthcare-trials"):
+    def __init__(self, *, timeout: float = 30.0, max_retries: int = 2, user_agent: str = "medresearch-trials"):
         self.timeout = timeout
         self.max_retries = max_retries
         self.user_agent = user_agent

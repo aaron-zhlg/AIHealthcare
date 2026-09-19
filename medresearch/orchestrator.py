@@ -6,8 +6,8 @@ loop, the plan → dispatch → evaluate → synthesize control flow, parallel
 subagents, dynamic spawning, trajectory logging — lives in :mod:`orchestra`. This
 module only supplies the medical pieces:
 
-* the two domain subagents (:class:`~aihealthcare.agents.literature.MedicalLiteratureAgent`
-  for PubMed and :class:`~aihealthcare.agents.trials.ClinicalTrialsAgent` for
+* the two domain subagents (:class:`~medresearch.literature.MedicalLiteratureAgent`
+  for PubMed and :class:`~medresearch.trials.ClinicalTrialsAgent` for
   ClinicalTrials.gov), and
 * medical-tuned phase prompts (planner / evaluator / synthesizer / citation) plus
   a project ``MISSION`` preamble injected into every phase of the lead agent.
@@ -16,11 +16,11 @@ The lead agent is intelligence-driven: it decides the decomposition, routing, ho
 many of each subagent to spin up, and when to stop — there is no hardcoded graph.
 
     export DEEPSEEK_API_KEY=sk-...
-    uv run python -m aihealthcare.agents "Do GLP-1 receptor agonists reduce major adverse cardiovascular events in type 2 diabetes, and what trials support this?"
+    uv run python -m medresearch "Do GLP-1 receptor agonists reduce major adverse cardiovascular events in type 2 diabetes, and what trials support this?"
 
 Programmatic use (backwards-compatible with the pre-orchestra API)::
 
-    from aihealthcare.agents import LeadResearcher
+    from medresearch import LeadResearcher
 
     report = LeadResearcher().research("...")
     print(report.report)      # the final answer text
@@ -40,8 +40,8 @@ from orchestra import (
     resolve_endpoint,
 )
 
-from aihealthcare.agents.literature import MedicalLiteratureAgent
-from aihealthcare.agents.trials import ClinicalTrialsAgent
+from medresearch.literature import MedicalLiteratureAgent
+from medresearch.trials import ClinicalTrialsAgent
 
 # Best-effort default model (for run metadata/labels). Resolved from the same
 # provider env the framework uses; falls back to a sensible alias when no key is
