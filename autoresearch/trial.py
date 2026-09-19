@@ -236,9 +236,20 @@ def load_gates() -> dict:
     return json.loads(GATES_PATH.read_text(encoding="utf-8"))
 
 
+# Reported / gated metrics must be final-epoch. Best-epoch selection on the
+# evaluation fold leaked ~0.07 LOSO AUC in an earlier revision (0.707 vs 0.623).
+FORBIDDEN_GATE_METRICS = frozenset({"best_auc", "best_auc_mean"})
+MODEL_SELECTION = "final epoch (no selection on the evaluation set)"
+
+
 def apply_gate(stage: str, summary: dict[str, float]) -> dict:
     gate = load_gates()["gates"][stage]
     metric = gate["metric"]
+    if metric in FORBIDDEN_GATE_METRICS or metric.startswith("best_"):
+        raise SystemExit(
+            f"refusing to gate on {metric!r}: best-epoch metrics leak the "
+            "evaluation set (historical LOSO bias ~0.07 AUC)"
+        )
     observed = summary[metric]
     passed = observed >= gate["threshold"]
     return {
@@ -303,6 +314,7 @@ def main() -> None:
         "git": revision,
         "config": asdict(config),
         "seeds": args.seeds,
+        "model_selection": MODEL_SELECTION,
         "summary": {key: round(value, 4) for key, value in summary.items()},
         "runs": runs,
         "verdict": verdict,
@@ -316,7 +328,16 @@ def main() -> None:
     append_ledger(
         {
             key: result[key]
-            for key in ("name", "stage", "ran_at", "git", "config", "summary", "verdict")
+            for key in (
+                "name",
+                "stage",
+                "ran_at",
+                "git",
+                "config",
+                "model_selection",
+                "summary",
+                "verdict",
+            )
         }
     )
 
