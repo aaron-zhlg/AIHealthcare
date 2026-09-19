@@ -21,7 +21,11 @@ before any edit, then implement ONE new change that follows that insight.
 Rules:
 - Interpret the insight: what was ruled out, what the next_code_change says, \
 what not to repeat. Do not retry a ruled-out mechanism.
-- Change ONE thing per turn (one mechanism).
+- Change ONE thing per turn (one mechanism). Keep the first edit tiny: one \
+function or a few lines. Do not attempt DANN / multi-file rewrites in one turn.
+- The experimenter scores `autoresearch/trial.py` (`run_fold`), which imports \
+`SimpleGCN` and `train_one_epoch`. If a training-step change is not visible \
+there, the trial will not measure it — edit `trial.py` or `gcn.py` accordingly.
 - Prefer small, testable edits: class weights, site harmonization, edge thresholding, \
 Fisher z, attention pooling, a slightly wider/deeper GCN. 884 subjects will not \
 support a new foundation model.
@@ -211,6 +215,7 @@ class CoderAgent(SubAgent):
     instructions = INSTRUCTIONS
 
     def __init__(self, *, promote: bool = True, push: bool = True, **kwargs: Any):
+        kwargs.setdefault("max_tool_rounds", 32)
         super().__init__(**kwargs)
 
     def create_tools(self) -> CodeTools:

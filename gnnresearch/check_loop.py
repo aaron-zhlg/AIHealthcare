@@ -1,0 +1,239 @@
+"""Exercise the write → measure → insight → rewrite state machine.
+
+This does not call an LLM and does not train a GNN. It checks whether the
+loop's bookkeeping has bugs: role order, insight handoff, frozen code, and
+the historical best-epoch leak guard.
+"""
+
+from __future__ import annotations
+
+import os
+import tempfile
+import traceback
+from pathlib import Path
+
+# Isolated session files, set before importing workspace-backed modules.
+_TMP = Path(tempfile.mkdtemp(prefix="gnnresearch-loop-"))
+os.environ["GNNRESEARCH_WORKSPACE"] = str(_TMP / "workspace.json")
+os.environ["GNNRESEARCH_TRIALS_DIR"] = str(_TMP / "trials")
+os.environ["GNNRESEARCH_RESULTS_DIR"] = str(_TMP / "results")
+os.environ["GNNRESEARCH_WRITE_DIR"] = str(_TMP)
+
+from gnnresearch.coder import CodeTools  # noqa: E402
+from gnnresearch.experimenter import ExperimenterTools, measurement_coverage  # noqa: E402
+from gnnresearch.orchestrator import _forced_assignment  # noqa: E402
+from gnnresearch.protocol import leak_reasons_in_source, protocol_ok  # noqa: E402
+from gnnresearch.workspace import (  # noqa: E402
+    apply_trial_outcome,
+    load_workspace,
+    next_role,
+    note_code_change,
+    save_insight,
+)
+
+PASSED = 0
+FAILED = 0
+
+
+def _check(name: str, condition: bool, detail: str = "") -> None:
+    global PASSED, FAILED
+    if condition:
+        PASSED += 1
+        print(f"  ok   {name}")
+        return
+    FAILED += 1
+    print(f"  FAIL {name}" + (f" — {detail}" if detail else ""))
+
+
+def _fake_verdict(stage: str, passed: bool, auc: float = 0.62) -> dict:
+    return {
+        "stage": stage,
+        "metric": "auc_mean",
+        "threshold": 0.63,
+        "observed": auc,
+        "margin": round(auc - 0.63, 4),
+        "passed": passed,
+    }
+
+
+def _write_scratch(tools: CodeTools, name: str, body: str = "x = 1\n") -> dict:
+    path = _TMP / name
+    return tools.write_file(str(path), body)
+
+
+def test_role_order() -> None:
+    print("role order")
+    _check("idle starts with coder", next_role() == "coder")
+    forced = _forced_assignment(None, "improve the gnn")
+    _check("lead forces coder first", forced is not None and forced.subagent == "coder")
+
+
+def test_write_then_measure() -> None:
+    print("write → measure")
+    tools = CodeTools()
+    tools.read_last_insight()
+    result = _write_scratch(tools, "change.py", "value = 1\n")
+    workspace = load_workspace()
+    _check("write opens needs_screen", workspace["status"] == "needs_screen", workspace["status"])
+    _check("write records file", bool(workspace["files_changed"]), str(workspace["files_changed"]))
+    _check("after write, experimenter is next", next_role() == "experimenter")
+    _check("write reports iteration 1", result["iteration"] == 1)
+
+
+def test_idle_trial_refused() -> None:
+    print("trial refused when idle")
+    # Reset by writing a fresh workspace through a new fail path: set status idle.
+    from gnnresearch.workspace import default_workspace, save_workspace
+
+    save_workspace(default_workspace())
+    tools = ExperimenterTools(promote_on_pass=False, push=False)
+    payload = tools.run_trial()
+    _check("run_trial idle is not ok", payload.get("ok") is False)
+    save_workspace(default_workspace())
+
+
+def test_fail_insight_then_coder() -> None:
+    print("fail → insight → fresh coder")
+    from gnnresearch.workspace import save_workspace, default_workspace
+
+    save_workspace(default_workspace())
+    writer = CodeTools()
+    writer.read_last_insight()
+    writer.record_hypothesis("tiny dropout tweak")
+    _write_scratch(writer, "model.py", "dropout = 0.4\n")
+
+    apply_trial_outcome(
+        "screen",
+        load_workspace()["current_name"],
+        _fake_verdict("screen", False, 0.61),
+        {"auc_mean": 0.61},
+        protocol_failed=False,
+    )
+    save_insight(
+        {
+            "stage": "screen",
+            "passed": False,
+            "auc_mean": 0.61,
+            "ruled_out": "tiny dropout tweak",
+            "next_code_change": "try class weights, not another dropout",
+            "narrative": "screen FAIL. dropout 0.4 did not beat 0.63.",
+        }
+    )
+    workspace = load_workspace()
+    _check("FAIL goes to awaiting_new_code", workspace["status"] == "awaiting_new_code")
+    _check("FAIL next role is coder", next_role() == "coder")
+    _check("insight persisted", bool(workspace.get("last_insight")))
+
+    blind = CodeTools()
+    try:
+        _write_scratch(blind, "model.py", "dropout = 0.3\n")
+        _check("blind coder blocked without insight", False, "write succeeded")
+    except PermissionError as exc:
+        _check("blind coder blocked without insight", "read_last_insight" in str(exc), str(exc))
+
+    informed = CodeTools()
+    insight = informed.read_last_insight()
+    _check(
+        "fresh coder sees next_code_change",
+        insight["last_insight"]["next_code_change"].startswith("try class weights"),
+    )
+    informed.record_hypothesis("class-weighted loss")
+    second = _write_scratch(informed, "model.py", "weight = True\n")
+    _check("insight-driven write starts iteration 2", second["iteration"] == 2)
+    _check("new write returns to needs_screen", load_workspace()["status"] == "needs_screen")
+
+
+def test_promotion_freezes_code() -> None:
+    print("promotion freezes coder")
+    from gnnresearch.workspace import default_workspace, save_workspace
+
+    save_workspace(default_workspace())
+    tools = CodeTools()
+    tools.read_last_insight()
+    _write_scratch(tools, "gcn_edit.py", "hidden = 64\n")
+    name = load_workspace()["current_name"]
+    apply_trial_outcome("screen", name, _fake_verdict("screen", True, 0.64), {"auc_mean": 0.64}, False)
+    _check("screen PASS → loso-subset", load_workspace()["status"] == "needs_loso_subset")
+    _check("subset still experimenter", next_role() == "experimenter")
+
+    frozen = CodeTools()
+    frozen.read_last_insight()
+    try:
+        _write_scratch(frozen, "gcn_edit.py", "hidden = 128\n")
+        _check("coder frozen on loso-subset", False, "write succeeded")
+    except PermissionError as exc:
+        _check("coder frozen on loso-subset", "frozen" in str(exc), str(exc))
+
+    apply_trial_outcome(
+        "loso-subset", name, _fake_verdict("loso-subset", True, 0.68), {"auc_mean": 0.68}, False
+    )
+    apply_trial_outcome(
+        "loso-full", name, _fake_verdict("loso-full", True, 0.67), {"auc_mean": 0.67}, False
+    )
+    _check("loso-full PASS → promoted", load_workspace()["status"] == "promoted")
+    _check("promoted stops the loop", next_role() is None)
+
+
+def test_protocol_and_coverage() -> None:
+    print("protocol guards")
+    _check(
+        "best-epoch gate source rejected",
+        bool(leak_reasons_in_source('observed = summary["best_auc_mean"]')),
+    )
+    leak = {
+        "model_selection": "best epoch",
+        "verdict": {"metric": "best_auc_mean"},
+        "summary": {"auc_mean": 0.62, "best_auc_mean": 0.70},
+    }
+    _check("best-epoch result is protocol fail", not protocol_ok(leak))
+    honest = {
+        "model_selection": "final epoch (no selection on the evaluation set)",
+        "verdict": {"metric": "auc_mean"},
+        "summary": {"auc_mean": 0.62, "best_auc_mean": 0.63},
+    }
+    _check("final-epoch result is protocol ok", protocol_ok(honest))
+    notes = measurement_coverage(["neuroasd/train.py"])
+    _check("train.py-only change warns measurement gap", any("MEASUREMENT GAP" in n for n in notes))
+    _check(
+        "gcn.py-only change has no gap",
+        measurement_coverage(["neuroasd/gcn.py"]) == [],
+    )
+
+
+def test_coder_cannot_write_gates() -> None:
+    print("path guards")
+    tools = CodeTools()
+    tools.read_last_insight()
+    try:
+        tools.write_file("autoresearch/gates.json", "{}")
+        _check("gates.json not writable", False)
+    except PermissionError:
+        _check("gates.json not writable", True)
+
+
+def main() -> None:
+    print(f"loop check  tmp={_TMP}\n")
+    tests = [
+        test_role_order,
+        test_idle_trial_refused,
+        test_write_then_measure,
+        test_fail_insight_then_coder,
+        test_promotion_freezes_code,
+        test_protocol_and_coverage,
+        test_coder_cannot_write_gates,
+    ]
+    for test in tests:
+        try:
+            test()
+        except Exception:
+            global FAILED
+            FAILED += 1
+            print(f"  FAIL {test.__name__} crashed")
+            traceback.print_exc()
+        print()
+    print(f"{PASSED} passed, {FAILED} failed")
+    raise SystemExit(1 if FAILED else 0)
+
+
+if __name__ == "__main__":
+    main()

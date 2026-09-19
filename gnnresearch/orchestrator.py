@@ -34,6 +34,10 @@ The loop is sequential. First assignment this round must be a SINGLE subagent:
 dispatch experimenter.
 Never dispatch both in one plan.
 
+When briefing the coder, demand ONE tiny mechanism (a few lines). Do not ask \
+for DANN, multi-file rewrites, or new training flags on the first turn. The \
+scored path is autoresearch/trial.py + neuroasd/gcn.py.
+
 Available subagent types:
 {roster}
 

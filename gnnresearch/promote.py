@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from gnnresearch.paths import EXPERIMENTS_DIR, REPO_ROOT, RESULTS_DIR, rel
+from gnnresearch.paths import EXPERIMENTS_DIR, REPO_ROOT, rel, results_dir
 from gnnresearch.workspace import load_workspace
 
 
@@ -118,7 +118,7 @@ def promote(result: dict[str, Any], *, push: bool) -> dict[str, Any]:
     if stage != "loso-full":
         raise ValueError("promotion is only allowed after a loso-full PASS")
 
-    staged_result = RESULTS_DIR / f"{stage}__{name}" / "result.json"
+    staged_result = results_dir() / f"{stage}__{name}" / "result.json"
     staged_result.parent.mkdir(parents=True, exist_ok=True)
     staged_result.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     experiment_dir = write_experiment_freeze(result)

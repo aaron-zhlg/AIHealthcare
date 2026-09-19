@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from gnnresearch.paths import WORKSPACE_PATH
+from gnnresearch.paths import workspace_path
 
 STATUSES = (
     "idle",
@@ -44,19 +44,21 @@ def default_workspace() -> dict[str, Any]:
 
 
 def load_workspace() -> dict[str, Any]:
-    if not WORKSPACE_PATH.exists():
+    path = workspace_path()
+    if not path.exists():
         return default_workspace()
-    data = json.loads(WORKSPACE_PATH.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
     merged = default_workspace()
     merged.update(data)
     return merged
 
 
 def save_workspace(data: dict[str, Any]) -> None:
-    WORKSPACE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = WORKSPACE_PATH.with_suffix(".tmp")
+    path = workspace_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(WORKSPACE_PATH)
+    tmp.replace(path)
 
 
 def slugify(text: str) -> str:

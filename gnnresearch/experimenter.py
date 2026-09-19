@@ -10,7 +10,7 @@ from typing import Any
 
 from orchestra import SubAgent
 
-from gnnresearch.paths import GATES_PATH, LEDGER_PATH, PROGRAM_PATH, REPO_ROOT, TRIALS_DIR
+from gnnresearch.paths import GATES_PATH, LEDGER_PATH, PROGRAM_PATH, REPO_ROOT, trials_dir
 from gnnresearch.promote import promote
 from gnnresearch.protocol import protocol_notes, protocol_ok
 from gnnresearch.workspace import (
@@ -40,6 +40,23 @@ worth trying (or "promote to next stage" if the same code should continue).
 
 Return a short structured insight the coder can act on.
 """
+
+def measurement_coverage(files_changed: list[str] | None) -> list[str]:
+    """Warn when the scored path (`trial.py`) likely missed the coder's edit."""
+    files = files_changed or []
+    notes: list[str] = []
+    scored = any(path.endswith("trial.py") or path.endswith("gcn.py") for path in files)
+    training_only = any(
+        path.endswith("train.py") or path.endswith("loso_cv.py") for path in files
+    )
+    if training_only and not scored:
+        notes.append(
+            "MEASUREMENT GAP: coder edited train.py/loso_cv.py but not "
+            "autoresearch/trial.py or neuroasd/gcn.py. Screen/LOSO run "
+            "autoresearch.trial.run_fold, so this trial may not measure the change."
+        )
+    return notes
+
 
 STAGE_TIMEOUT = {
     "screen": 15 * 60,
@@ -105,7 +122,7 @@ class ExperimenterTools:
             name: Trial slug, e.g. 'iter1_class-weight'.
             stage: 'screen', 'loso-subset', or 'loso-full'.
         """
-        path = TRIALS_DIR / f"{stage}__{name}" / "result.json"
+        path = trials_dir() / f"{stage}__{name}" / "result.json"
         if not path.is_file():
             raise FileNotFoundError(str(path.relative_to(REPO_ROOT)))
         self.touched.append(str(path.relative_to(REPO_ROOT)))
@@ -156,7 +173,7 @@ class ExperimenterTools:
             env=os.environ.copy(),
             check=False,
         )
-        result_path = TRIALS_DIR / f"{stage}__{name}" / "result.json"
+        result_path = trials_dir() / f"{stage}__{name}" / "result.json"
         if not result_path.is_file():
             return {
                 "ok": False,
@@ -220,6 +237,7 @@ class ExperimenterTools:
             "workspace_status": workspace.get("status"),
             "promotion": promotion,
             "insight_hint": hint,
+            "measurement_notes": measurement_coverage(workspace.get("files_changed")),
             "exit_code": ran.returncode,
         }
         save_insight(
@@ -306,6 +324,7 @@ class ExperimenterAgent(SubAgent):
     instructions = INSTRUCTIONS
 
     def __init__(self, *, promote: bool = True, push: bool = True, **kwargs: Any):
+        kwargs.setdefault("max_tool_rounds", 24)
         super().__init__(**kwargs)
         self._promote = promote
         self._push = push

@@ -99,6 +99,7 @@ an **experimenter** runs a gated trial and writes an insight, then a fresh coder
 reads that insight and makes the next one-thing change.
 
 ```bash
+uv run python -m gnnresearch.check_loop   # no LLM, no training; tests the loop
 uv run python -m gnnresearch
 ```
 
