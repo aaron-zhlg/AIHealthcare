@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any
 
@@ -11,13 +12,14 @@ from orchestra import Assignment, LLMError, Orchestrator, OrchestratorReport, Su
 from autoresearch.loop.coder import CoderAgent
 from autoresearch.loop.experimenter import ExperimenterAgent
 from autoresearch.loop.linter import LintAgent
-from autoresearch.loop.paths import workspace_path
+from autoresearch.loop.paths import clear_baseline, workspace_path
 from autoresearch.loop.workspace import load_workspace, mark_coder_outcome, next_role, record_lint
 
 DEFAULT_GOAL = (
-    "Improve the GNN's cross-site ASD vs control AUC on ABIDE by editing training "
-    "or model code, measuring each change with final-epoch gates, and iterating on "
-    "the experimenter's insight. Change one mechanism at a time."
+    "Improve the GNN's cross-site ASD vs control accuracy on ABIDE toward 80% "
+    "by editing training or model code, measuring each change with final-epoch "
+    "gates, and iterating on the experimenter's insight. Change one mechanism "
+    "at a time. A loso-full PASS is a new baseline, not a stop."
 )
 
 MISSION = """\
@@ -66,11 +68,13 @@ You inspect findings and decide the next SINGLE step of the loop.
 - After lint FAIL: spawn coder with the lint errors.
 - After lint PASS: spawn experimenter.
 - After experimenter, if the same code still needs loso-subset or loso-full: \
-spawn experimenter again.
+spawn experimenter again. One stage per experimenter instance.
 - After experimenter FAIL (or a completed stage that needs a new idea): spawn \
 coder. Put the insight into the coder objective: ruled out, next_code_change, \
 final-epoch AUC vs gate. The coder is a fresh instance and cannot see this chat.
-- After loso-full PASS: complete is true. Do not spawn more work.
+- After loso-full PASS: if accuracy is still below the 80% target, spawn coder \
+on the winning code (do not revert). complete is true only when accuracy \
+reaches the target.
 - Never claim a best-epoch number as progress.
 
 Available subagent types:
@@ -147,7 +151,10 @@ def _experimenter_assignment(proposed: Assignment | None = None) -> Assignment:
     objective = (
         proposed.objective
         if proposed and proposed.subagent == "experimenter"
-        else "Measure the pending code change at the workspace-required stage."
+        else (
+            "Measure the pending code change at the workspace-required stage. "
+            "Call run_trial once, then store_insight. Do not run a second stage."
+        )
     )
     return Assignment(
         "experimenter",
@@ -241,16 +248,18 @@ class GNNLead(Orchestrator):
         return [forced] if forced is not None else []
 
     def run(self, goal: str) -> OrchestratorReport:
-        """Loop write → lint → trial until loso-full PASS, max_rounds, or Ctrl-C.
+        """Loop write → lint → trial until accuracy target, max_rounds, or Ctrl-C.
 
-        ``max_rounds <= 0`` means no cap. Workspace is kept across process
-        restarts, so a killed run can be continued by starting again.
+        ``max_rounds <= 0`` means no cap. A loso-full PASS keeps the winning
+        code and continues. Workspace is kept across process restarts.
         """
         self._reset_logs()
         unlimited = self.max_rounds <= 0
         self._log(f"\n[lead] planning: {goal}")
         if unlimited:
-            self._log("[lead] max_rounds=0; run until loso-full PASS or Ctrl-C")
+            self._log(
+                "[lead] max_rounds=0; run until loso-full accuracy target or Ctrl-C"
+            )
         complexity, assignments = self._plan(goal)
         self._log(f"[lead] complexity={complexity}; {len(assignments)} initial task(s)")
 
@@ -266,7 +275,7 @@ class GNNLead(Orchestrator):
                 all_results.extend(self._dispatch(assignments, rounds))
                 follow_up = self._evaluate(goal, all_results)
                 if not follow_up:
-                    self._log("[lead] evaluation: stop (promoted or no next role)")
+                    self._log("[lead] evaluation: stop (target reached or no next role)")
                     break
                 if not unlimited and rounds >= self.max_rounds:
                     self._log(
@@ -313,7 +322,13 @@ def main() -> None:
         type=int,
         default=0,
         metavar="N",
-        help="Max write/lint/run rounds for a local smoke. Omit or 0 = until loso-full PASS or Ctrl-C.",
+        help="Max write/lint/run rounds for a local smoke. Omit or 0 = until accuracy target or Ctrl-C.",
+    )
+    parser.add_argument(
+        "--target-acc",
+        type=float,
+        default=0.80,
+        help="Stop after a loso-full PASS whose accuracy_mean reaches this (default 0.80).",
     )
     parser.add_argument(
         "--fresh",
@@ -325,6 +340,7 @@ def main() -> None:
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--log-dir", default="outputs/autoresearch/loop/logs")
     args = parser.parse_args()
+    os.environ["AUTORESEARCH_LOOP_TARGET_ACC"] = str(args.target_acc)
 
     def build() -> GNNLead:
         return GNNLead(
@@ -341,6 +357,7 @@ def main() -> None:
         if path.exists():
             path.unlink()
             print(f"cleared {path}", file=sys.stderr)
+        clear_baseline()
 
     goal = " ".join(args.goal).strip() or DEFAULT_GOAL
     try:

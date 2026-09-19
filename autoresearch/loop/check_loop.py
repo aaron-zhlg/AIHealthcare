@@ -143,6 +143,8 @@ def test_fail_insight_then_coder() -> None:
     workspace = load_workspace()
     _check("FAIL goes to awaiting_new_code", workspace["status"] == "awaiting_new_code")
     _check("FAIL next role is coder", next_role() == "coder")
+    _check("FAIL resets coder_ok", workspace.get("coder_ok") is None)
+    _check("FAIL reverts the scratch edit", not (_TMP / "model.py").exists())
     _check("insight persisted", bool(workspace.get("last_insight")))
 
     blind = CodeTools()
@@ -191,10 +193,50 @@ def test_promotion_freezes_code() -> None:
         "loso-subset", name, _fake_verdict("loso-subset", True, 0.68), {"auc_mean": 0.68}, False
     )
     apply_trial_outcome(
-        "loso-full", name, _fake_verdict("loso-full", True, 0.67), {"auc_mean": 0.67}, False
+        "loso-full",
+        name,
+        _fake_verdict("loso-full", True, 0.67),
+        {"auc_mean": 0.67, "accuracy_mean": 0.60},
+        False,
     )
-    _check("loso-full PASS → promoted", load_workspace()["status"] == "promoted")
-    _check("promoted stops the loop", next_role() is None)
+    after_win = load_workspace()
+    _check(
+        "loso-full PASS below target continues",
+        after_win["status"] == "awaiting_new_code",
+        after_win["status"],
+    )
+    _check("next role is coder after a win", next_role() == "coder")
+    _check(
+        "win keeps the scratch file",
+        (_TMP / "gcn_edit.py").read_text() == "hidden = 64\n",
+    )
+    stacked = CodeTools()
+    stacked.read_last_insight()
+    stacked.record_hypothesis("stack a worse change")
+    _write_scratch(stacked, "gcn_edit.py", "hidden = 256\n")
+    mark_coder_outcome(True)
+    record_lint({"passed": True, "errors": []})
+    apply_trial_outcome(
+        "screen",
+        load_workspace()["current_name"],
+        _fake_verdict("screen", False, 0.61),
+        {"auc_mean": 0.61},
+        False,
+    )
+    _check(
+        "FAIL after a win restores the snapshot",
+        (_TMP / "gcn_edit.py").read_text() == "hidden = 64\n",
+        (_TMP / "gcn_edit.py").read_text() if (_TMP / "gcn_edit.py").exists() else "missing",
+    )
+    apply_trial_outcome(
+        "loso-full",
+        name,
+        _fake_verdict("loso-full", True, 0.70),
+        {"auc_mean": 0.70, "accuracy_mean": 0.81},
+        False,
+    )
+    _check("accuracy target stops the loop", load_workspace()["status"] == "target_reached")
+    _check("target reached has no next role", next_role() is None)
 
 
 def test_protocol_and_coverage() -> None:
@@ -284,6 +326,19 @@ def test_pr_body_leads_with_scores() -> None:
     _check("best-epoch marked diagnostic", "not a result" in body)
 
 
+def test_experimenter_runs_one_stage() -> None:
+    print("one stage per experimenter")
+    tools = ExperimenterTools(promote_on_pass=False, push=False)
+    tools._ran_trial = True
+    refused = tools.run_trial()
+    _check("second run_trial refused", refused.get("ok") is False, str(refused))
+    _check(
+        "reason is already ran one stage",
+        "already ran" in str(refused.get("error")),
+        str(refused.get("error")),
+    )
+
+
 def test_coder_cannot_write_gates() -> None:
     print("path guards")
     tools = CodeTools()
@@ -306,6 +361,7 @@ def main() -> None:
         test_protocol_and_coverage,
         test_coder_fail_and_lint_block_training,
         test_pr_body_leads_with_scores,
+        test_experimenter_runs_one_stage,
         test_coder_cannot_write_gates,
     ]
     for test in tests:

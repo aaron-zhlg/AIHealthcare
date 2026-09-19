@@ -85,18 +85,19 @@ trial (final-epoch AUC only). `loop/` is the multi-agent driver: coder → linte
 
 | Stage | Evaluation | Gate |
 |-------|------------|------|
-| `screen` | Random 80/20 × 3 seeds | AUC ≥ 0.63 |
+| `screen` | Random 80/20 × 3 seeds | AUC ≥ 0.64 |
 | `loso-subset` | LOSO, 5 largest sites | AUC ≥ 0.67 |
 | `loso-full` | LOSO, all 20 sites | AUC ≥ 0.66 |
 
-A `screen` PASS is only a filter. Only a `loso-full` PASS opens a review PR
-(scores first in the description). Nothing merges to `main` or raises
-`gates.json` by itself.
+A `screen` PASS is only a filter. A `loso-full` PASS opens a review PR
+(scores first) and becomes the new baseline; the loop keeps going until
+`loso-full` accuracy reaches 80% (or Ctrl-C). Nothing merges to `main` or
+raises `gates.json` by itself.
 
 ```bash
 ./autoresearch/run_trial.sh --name dropout03 --note "less regularization" -- --dropout 0.3
 uv run python -m autoresearch.loop.check_loop          # no LLM, no training
-uv run python -m autoresearch.loop                     # until loso-full PASS or Ctrl-C
+uv run python -m autoresearch.loop                     # until 80% accuracy or Ctrl-C
 uv run python -m autoresearch.loop --max-rounds 2      # local smoke
 ```
 

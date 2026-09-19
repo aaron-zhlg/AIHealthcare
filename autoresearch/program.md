@@ -40,7 +40,9 @@ Full numbers live in `autoresearch/gates.json`.
    teaches nothing about which one mattered.
 5. **Gate on final-epoch metrics.** `autoresearch/trial.py` reports these by design;
    do not add best-epoch selection on the test fold, which leaks.
-6. **Do not tune against `loso-full`.** It is the confirmation stage, not a search
+6. **Do not stack a new idea on a failed diff.** After a FAIL the loop restores
+   coder-writable files to the last loso-full winner (or HEAD if there is none).
+7. **Do not tune against `loso-full`.** It is the confirmation stage, not a search
    signal. Repeatedly sweeping on it overfits the only honest estimate available.
 
 ---
@@ -51,7 +53,7 @@ Trials are cheap-to-expensive. Do not skip ahead.
 
 | Stage | What it runs | Cost | Gate |
 |-------|--------------|------|------|
-| `screen` | Random 80/20 split × 3 seeds | ~1 min | mean AUC ≥ 0.63 |
+| `screen` | Random 80/20 split × 3 seeds | ~1 min | mean AUC ≥ 0.64 |
 | `loso-subset` | LOSO on NYU, UM_1, USM, UCLA_1, YALE | ~2 min | mean AUC ≥ 0.67 |
 | `loso-full` | LOSO on all 20 sites | ~6 min | mean AUC ≥ 0.66 |
 
@@ -85,7 +87,9 @@ The framework lives on `main` under `autoresearch/` (including the multi-agent
 
 The unbounded agent loop (`python -m autoresearch.loop`) follows the same
 promotion rule: only a protocol-clean `loso-full` PASS opens that PR. It never
-merges to `main` or edits `gates.json`.
+merges to `main` or edits `gates.json`. After a full PASS it keeps the winning
+code and searches for the next mechanism until `loso-full` accuracy reaches
+80%. It does not wait for a merge.
 
 Failed trials leave no remote branch, but they are never lost: every run appends to
 `outputs/autoresearch/ledger.jsonl`, which is gitignored and therefore survives branch

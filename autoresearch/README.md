@@ -63,7 +63,7 @@ gives the agent memory that is independent of git history.
 
 | Stage | Evaluation | Cost | Measured baseline | Gate |
 |-------|------------|------|-------------------|------|
-| `screen` | Random 80/20 split × 3 seeds | ~1 min | 0.628 | AUC ≥ 0.63 |
+| `screen` | Random 80/20 split × 3 seeds | ~1 min | 0.628 | AUC ≥ 0.64 |
 | `loso-subset` | LOSO on the 5 largest sites | ~2 min | 0.659 | AUC ≥ 0.67 |
 | `loso-full` | LOSO on all 20 sites | ~6 min | 0.631 | AUC ≥ 0.66 |
 
@@ -109,11 +109,12 @@ idle
        syntax, no best-epoch leak,
        change visible to trial.py (SimpleGCN + train_one_epoch)
   → lint FAIL  → coder, with the lint report as insight
-  → experimenter runs the required stage
-  → screen FAIL   → coder (new idea)
+  → experimenter runs one required stage
+  → screen FAIL   → revert the diff; coder (new idea)
   → screen PASS   → same code, loso-subset   (coder frozen)
   → subset PASS   → same code, loso-full     (coder frozen)
-  → full PASS     → review PR; loop stops
+  → full PASS     → review PR; keep the code; coder stacks the next mechanism
+  → loso-full accuracy ≥ 0.80 → stop
 ```
 
 Writable: `neuroasd/*.py` and `autoresearch/trial.py`. Not writable:
@@ -125,13 +126,16 @@ The scored path is `autoresearch.trial.run_fold`, which imports `SimpleGCN` and
 measurement gap: lint FAILs it, because a trial would not see the change.
 
 While status is `needs_loso_subset` or `needs_loso_full`, the current diff is
-frozen. The experimenter keeps measuring the same code.
+frozen. A FAIL restores coder-writable files to the last `loso-full` winner
+(or HEAD if there is none). Each experimenter instance may call `run_trial`
+once.
 
-Only a protocol-clean `loso-full` PASS calls `promote.py`. That freezes
-`experiments/<name>_v1/`, commits the training/eval diff onto
-`experiment/trial-<slug>`, and opens a review PR whose **description starts
-with the scores**. It does not merge to `main` and does not raise
-`gates.json`. `--no-promote` / `--no-push` skip the branch and PR.
+A protocol-clean `loso-full` PASS opens a review PR (scores first), snapshots
+the winning files as the new baseline, and **keeps searching** — the next
+coder stacks one new mechanism on that win. It does not wait for merge and
+does not raise `gates.json`. The loop stops when `loso-full` accuracy_mean
+reaches `--target-acc` (default 0.80) or on Ctrl-C. A later full run that
+does not beat the last win's AUC is treated as a FAIL and reverted.
 
 ---
 
@@ -154,7 +158,7 @@ Unbounded multi-agent search (needs `DEEPSEEK_API_KEY` or `OPENAI_API_KEY`):
 ```bash
 set -a; source .env; set +a
 uv run python -m autoresearch.loop.check_loop     # no LLM, no training
-uv run python -m autoresearch.loop                # until loso-full PASS or Ctrl-C
+uv run python -m autoresearch.loop                # until 80% accuracy or Ctrl-C
 uv run python -m autoresearch.loop --max-rounds 2 # local smoke
 uv run python -m autoresearch.loop --fresh        # wipe workspace and restart
 ```

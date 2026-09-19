@@ -28,6 +28,8 @@ model code.
 
 Rules:
 - Read the workspace first. Run the stage it requires; do not skip ahead.
+- Call run_trial exactly once, then store_insight and stop. If screen PASSed, \
+the lead will dispatch a fresh experimenter for loso-subset. Do not chain stages.
 - Official metric is final-epoch auc_mean. best_auc_mean is diagnostic only.
 - A 2026-08-27 revision showed that picking the best epoch on the evaluation \
 set inflated LOSO from 0.623 to 0.707 (~0.07 AUC). If a result is not \
@@ -74,6 +76,7 @@ class ExperimenterTools:
         self.promote_on_pass = promote_on_pass
         self.push = push
         self.touched: list[str] = []
+        self._ran_trial = False
 
     def as_tools(self) -> list:
         return [
@@ -139,6 +142,14 @@ class ExperimenterTools:
         Args:
             note: Optional extra note stored on the result (defaults to hypothesis).
         """
+        if self._ran_trial:
+            return {
+                "ok": False,
+                "error": (
+                    "this experimenter already ran one stage. "
+                    "A fresh instance will run the next stage if the gate passed."
+                ),
+            }
         workspace = load_workspace()
         if not coder_finished_cleanly(workspace):
             return {
@@ -173,6 +184,7 @@ class ExperimenterTools:
         if not name:
             return {"ok": False, "error": "workspace has no current_name"}
 
+        self._ran_trial = True
         hypothesis = note.strip() or str(workspace.get("hypothesis") or "")
         command = [
             sys.executable,
@@ -225,10 +237,11 @@ class ExperimenterTools:
         )
 
         promotion = None
+        last = (workspace.get("last_results") or {}).get(stage) or {}
         if (
             self.promote_on_pass
             and stage == "loso-full"
-            and result["verdict"].get("passed")
+            and last.get("passed")
             and not failed_protocol
         ):
             promotion = promote(result, push=self.push)
@@ -326,9 +339,23 @@ def _insight_hint(
             "loso-subset PASS. Next: experimenter runs loso-full on the same code. "
             "Still not a published improvement."
         )
+    last = (workspace.get("last_results") or {}).get(stage) or {}
+    if last.get("did_not_beat_last_win"):
+        return (
+            "loso-full met the gate but did not beat the last win's AUC. "
+            "Reverted to the winning snapshot. Next: coder, one new mechanism."
+        )
+    last_win = workspace.get("last_win") or {}
+    acc = last_win.get("accuracy_mean")
+    if workspace.get("status") == "target_reached":
+        return (
+            "loso-full PASS and accuracy target reached. A review PR may be open. "
+            "Loop stops. Do not raise gates.json."
+        )
     return (
-        "loso-full PASS. A review branch may have been opened. "
-        "A human must review before merge. Do not raise gates.json."
+        "loso-full PASS. Keep this code as the new baseline and add ONE new "
+        f"mechanism. Last win AUC {last_win.get('auc_mean')} accuracy {acc}. "
+        "A review PR may be open; do not wait for merge. Do not raise gates.json."
     )
 
 

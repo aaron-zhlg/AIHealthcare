@@ -31,8 +31,8 @@
   "gates": {
     "screen": {
       "metric": "auc_mean",
-      "threshold": 0.63,
-      "rationale": "Matches the measured baseline (0.628). A cheap filter: an idea that cannot equal the baseline on random splits does not deserve a LOSO run."
+      "threshold": 0.64,
+      "rationale": "Above the measured 3-seed baseline (0.628, std 0.036). 0.63 let noise through (DropEdge 0.6315 then failed loso-subset); 0.64 is a slightly stricter cheap filter."
     },
     "loso-subset": {
       "metric": "auc_mean",

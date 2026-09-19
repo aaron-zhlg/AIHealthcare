@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 
-from autoresearch.loop.paths import workspace_path
+from autoresearch.loop.paths import revert_coder_files, snapshot_coder_files, workspace_path
 
 STATUSES = (
     "idle",
@@ -17,6 +18,7 @@ STATUSES = (
     "needs_loso_full",
     "awaiting_new_code",
     "promoted",
+    "target_reached",
 )
 
 STAGE_FOR_STATUS = {
@@ -28,7 +30,6 @@ STAGE_FOR_STATUS = {
 NEXT_STATUS_ON_PASS = {
     "screen": "needs_loso_subset",
     "loso-subset": "needs_loso_full",
-    "loso-full": "promoted",
 }
 
 
@@ -46,6 +47,7 @@ def default_workspace() -> dict[str, Any]:
         "lint_ok": None,
         "lint_report": None,
         "history": [],
+        "last_win": None,
     }
 
 
@@ -67,6 +69,14 @@ def save_workspace(data: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def target_accuracy() -> float:
+    raw = os.environ.get("AUTORESEARCH_LOOP_TARGET_ACC", "0.80")
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.80
+
+
 def slugify(text: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return slug[:32] or "change"
@@ -81,7 +91,13 @@ def note_code_change(path: str, hypothesis: str = "") -> dict[str, Any]:
     """Record a coder edit. Starts a new iteration unless one is already open."""
     data = load_workspace()
     status = data.get("status") or "idle"
-    opening = status in {"idle", "awaiting_new_code", "promoted", "lint_failed", "coder_failed"}
+    opening = status in {
+        "idle",
+        "awaiting_new_code",
+        "promoted",
+        "lint_failed",
+        "coder_failed",
+    }
     if opening:
         data["iteration"] = int(data.get("iteration") or 0) + 1
         data["last_results"] = {}
@@ -157,23 +173,56 @@ def apply_trial_outcome(
     protocol_failed: bool,
 ) -> dict[str, Any]:
     data = load_workspace()
+    gate_passed = bool(verdict.get("passed")) and not protocol_failed
+    auc = summary.get("auc_mean")
+    acc = summary.get("accuracy_mean")
+    last_win = data.get("last_win")
+    improved = True
+    if gate_passed and stage == "loso-full" and isinstance(last_win, dict):
+        prev_auc = last_win.get("auc_mean")
+        if prev_auc is not None and auc is not None and float(auc) <= float(prev_auc):
+            improved = False
+    won = gate_passed and improved
     data.setdefault("last_results", {})[stage] = {
         "name": name,
-        "passed": bool(verdict.get("passed")) and not protocol_failed,
-        "auc_mean": summary.get("auc_mean"),
+        "passed": won,
+        "auc_mean": auc,
+        "accuracy_mean": acc,
         "margin": verdict.get("margin"),
         "protocol_failed": protocol_failed,
+        "did_not_beat_last_win": gate_passed and not improved,
     }
-    if protocol_failed or not verdict.get("passed"):
+    if not won:
         data["status"] = "awaiting_new_code"
+        data["coder_ok"] = None
+        data["lint_ok"] = None
+        data["lint_report"] = None
+        data["reverted"] = revert_coder_files(list(data.get("files_changed") or []))
+    elif stage == "loso-full":
+        data["last_win"] = {
+            "name": name,
+            "auc_mean": auc,
+            "accuracy_mean": acc,
+        }
+        data["snapshotted"] = snapshot_coder_files(list(data.get("files_changed") or []))
+        data["reverted"] = []
+        data["coder_ok"] = None
+        data["lint_ok"] = None
+        data["lint_report"] = None
+        if acc is not None and float(acc) >= target_accuracy():
+            data["status"] = "target_reached"
+        else:
+            data["status"] = "awaiting_new_code"
     else:
         data["status"] = NEXT_STATUS_ON_PASS[stage]
+        data["reverted"] = []
     data["history"] = list(data.get("history") or []) + [
         {
             "name": name,
             "stage": stage,
             "passed": data["last_results"][stage]["passed"],
-            "auc_mean": summary.get("auc_mean"),
+            "auc_mean": auc,
+            "accuracy_mean": acc,
         }
     ]
     save_workspace(data)
@@ -181,10 +230,10 @@ def apply_trial_outcome(
 
 
 def next_role(workspace: dict[str, Any] | None = None) -> str | None:
-    """Who must run next. ``None`` means the loop is done (loso-full PASS)."""
+    """Who must run next. ``None`` means accuracy target reached."""
     data = workspace if workspace is not None else load_workspace()
     status = str(data.get("status") or "idle")
-    if status == "promoted":
+    if status in {"target_reached", "promoted"}:
         return None
     if status == "coder_failed" or data.get("coder_ok") is False:
         return "coder"

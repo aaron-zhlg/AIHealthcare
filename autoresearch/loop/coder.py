@@ -23,6 +23,9 @@ Rules:
 what not to repeat. Do not retry a ruled-out mechanism.
 - Change ONE thing per turn (one mechanism). Keep the first edit tiny: one \
 function or a few lines. Do not attempt DANN / multi-file rewrites in one turn.
+- Failed edits revert to the last loso-full winner (or HEAD if none). \
+Implement the new mechanism on that baseline; do not restack a ruled-out change. \
+After a loso-full PASS, add the next mechanism on top of the winning code.
 - The experimenter scores `autoresearch/trial.py` (`run_fold`), which imports \
 `SimpleGCN` and `train_one_epoch`. If a training-step change is not visible \
 there, the trial will not measure it — edit `trial.py` or `gcn.py` accordingly.
