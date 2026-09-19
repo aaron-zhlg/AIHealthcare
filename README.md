@@ -102,7 +102,7 @@ Unfinished or lint-failing edits are not trained.
 
 ```bash
 uv run python -m gnnresearch.check_loop   # no LLM, no training; tests the loop
-uv run python -m gnnresearch
+uv run python -m gnnresearch --max-rounds 0   # until loso-full PASS or Ctrl-C
 ```
 
 Official scores are always **final-epoch** AUC. Best-epoch numbers are diagnostic

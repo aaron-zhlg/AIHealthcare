@@ -11,6 +11,7 @@ from orchestra import Assignment, LLMError, Orchestrator, OrchestratorReport, Su
 from gnnresearch.coder import CoderAgent
 from gnnresearch.experimenter import ExperimenterAgent
 from gnnresearch.linter import LintAgent
+from gnnresearch.paths import workspace_path
 from gnnresearch.workspace import load_workspace, mark_coder_outcome, next_role, record_lint
 
 DEFAULT_GOAL = (
@@ -239,6 +240,62 @@ class GNNLead(Orchestrator):
         forced = _forced_assignment(proposed, goal)
         return [forced] if forced is not None else []
 
+    def run(self, goal: str) -> OrchestratorReport:
+        """Loop write → lint → trial until loso-full PASS, max_rounds, or Ctrl-C.
+
+        ``max_rounds <= 0`` means no cap. Workspace is kept across process
+        restarts, so a killed run can be continued by starting again.
+        """
+        self._reset_logs()
+        unlimited = self.max_rounds <= 0
+        self._log(f"\n[lead] planning: {goal}")
+        if unlimited:
+            self._log("[lead] max_rounds=0; run until loso-full PASS or Ctrl-C")
+        complexity, assignments = self._plan(goal)
+        self._log(f"[lead] complexity={complexity}; {len(assignments)} initial task(s)")
+
+        all_results: list[SubAgentResult] = []
+        rounds = 0
+        try:
+            while assignments:
+                rounds += 1
+                self._log(
+                    f"[lead] round {rounds}: dispatching {len(assignments)} "
+                    f"subagent(s) ({assignments[0].subagent})"
+                )
+                all_results.extend(self._dispatch(assignments, rounds))
+                follow_up = self._evaluate(goal, all_results)
+                if not follow_up:
+                    self._log("[lead] evaluation: stop (promoted or no next role)")
+                    break
+                if not unlimited and rounds >= self.max_rounds:
+                    self._log(
+                        f"[lead] reached max_rounds={self.max_rounds}; "
+                        "synthesizing (re-run to continue from workspace)"
+                    )
+                    break
+                spawned = ", ".join(a.subagent for a in follow_up)
+                self._log(f"[lead] next: {spawned}")
+                assignments = follow_up
+        except KeyboardInterrupt:
+            self._log("[lead] Ctrl-C; synthesizing what we have")
+
+        if not all_results:
+            return OrchestratorReport(
+                goal=goal, answer="Nothing to do.", complexity=complexity, rounds=0
+            )
+
+        self._log("[lead] synthesizing final answer")
+        draft = self._synthesize(goal, all_results)
+        answer = self._cite(goal, draft, all_results) if self.add_citations else draft
+        return OrchestratorReport(
+            goal=goal,
+            answer=answer,
+            complexity=complexity,
+            rounds=rounds,
+            results=all_results,
+        )
+
     def research(self, goal: str) -> OrchestratorReport:
         return self.run(goal)
 
@@ -251,7 +308,17 @@ def main() -> None:
     )
     parser.add_argument("goal", nargs="*", help="Research goal; omit for the default.")
     parser.add_argument("--lead-model", default=None, help="Model for the lead.")
-    parser.add_argument("--max-rounds", type=int, default=10, help="Max write/lint/run rounds.")
+    parser.add_argument(
+        "--max-rounds",
+        type=int,
+        default=10,
+        help="Max write/lint/run rounds. 0 = run until loso-full PASS or Ctrl-C.",
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Delete the session workspace and start from idle.",
+    )
     parser.add_argument("--no-push", action="store_true", help="Do not git push on loso-full PASS.")
     parser.add_argument("--no-promote", action="store_true", help="Do not open a review branch.")
     parser.add_argument("--quiet", action="store_true")
@@ -267,6 +334,12 @@ def main() -> None:
             verbose=not args.quiet,
             log_dir=args.log_dir,
         )
+
+    if args.fresh:
+        path = workspace_path()
+        if path.exists():
+            path.unlink()
+            print(f"cleared {path}", file=sys.stderr)
 
     goal = " ".join(args.goal).strip() or DEFAULT_GOAL
     try:
