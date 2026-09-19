@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 NEUROASD_DIR = REPO_ROOT / "neuroasd"
 TRIAL_PY = REPO_ROOT / "autoresearch" / "trial.py"
 GATES_PATH = REPO_ROOT / "autoresearch" / "gates.json"
@@ -14,22 +14,30 @@ LEDGER_PATH = REPO_ROOT / "outputs" / "autoresearch" / "ledger.jsonl"
 EXPERIMENTS_DIR = REPO_ROOT / "experiments"
 
 
+def _env_path(*names: str) -> str | None:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
 def workspace_path() -> Path:
-    override = os.environ.get("GNNRESEARCH_WORKSPACE")
+    override = _env_path("AUTORESEARCH_LOOP_WORKSPACE", "GNNRESEARCH_WORKSPACE")
     if override:
         return Path(override)
-    return REPO_ROOT / "outputs" / "gnnresearch" / "workspace.json"
+    return REPO_ROOT / "outputs" / "autoresearch" / "loop" / "workspace.json"
 
 
 def trials_dir() -> Path:
-    override = os.environ.get("GNNRESEARCH_TRIALS_DIR")
+    override = _env_path("AUTORESEARCH_LOOP_TRIALS_DIR", "GNNRESEARCH_TRIALS_DIR")
     if override:
         return Path(override)
     return REPO_ROOT / "outputs" / "autoresearch" / "trials"
 
 
 def results_dir() -> Path:
-    override = os.environ.get("GNNRESEARCH_RESULTS_DIR")
+    override = _env_path("AUTORESEARCH_LOOP_RESULTS_DIR", "GNNRESEARCH_RESULTS_DIR")
     if override:
         return Path(override)
     return REPO_ROOT / "autoresearch" / "results"
@@ -42,7 +50,7 @@ RESULTS_DIR = results_dir()
 
 
 def _writable_extra() -> Path | None:
-    raw = os.environ.get("GNNRESEARCH_WRITE_DIR")
+    raw = os.environ.get("AUTORESEARCH_LOOP_WRITE_DIR") or os.environ.get("GNNRESEARCH_WRITE_DIR")
     return Path(raw).resolve() if raw else None
 
 

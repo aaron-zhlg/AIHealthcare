@@ -19,12 +19,13 @@ os.environ["GNNRESEARCH_TRIALS_DIR"] = str(_TMP / "trials")
 os.environ["GNNRESEARCH_RESULTS_DIR"] = str(_TMP / "results")
 os.environ["GNNRESEARCH_WRITE_DIR"] = str(_TMP)
 
-from gnnresearch.coder import CodeTools  # noqa: E402
-from gnnresearch.experimenter import ExperimenterTools, measurement_coverage  # noqa: E402
-from gnnresearch.linter import lint_paths  # noqa: E402
-from gnnresearch.orchestrator import _forced_assignment  # noqa: E402
-from gnnresearch.protocol import leak_reasons_in_source, protocol_ok  # noqa: E402
-from gnnresearch.workspace import (  # noqa: E402
+from autoresearch.loop.coder import CodeTools  # noqa: E402
+from autoresearch.loop.experimenter import ExperimenterTools, measurement_coverage  # noqa: E402
+from autoresearch.loop.linter import lint_paths  # noqa: E402
+from autoresearch.loop.orchestrator import _forced_assignment  # noqa: E402
+from autoresearch.loop.promote import pr_body, pr_title  # noqa: E402
+from autoresearch.loop.protocol import leak_reasons_in_source, protocol_ok  # noqa: E402
+from autoresearch.loop.workspace import (  # noqa: E402
     apply_trial_outcome,
     load_workspace,
     mark_coder_outcome,
@@ -88,7 +89,7 @@ def test_write_then_measure() -> None:
 
 
 def required_stage_ok() -> bool:
-    from gnnresearch.workspace import coder_finished_cleanly, lint_passed, required_stage
+    from autoresearch.loop.workspace import coder_finished_cleanly, lint_passed, required_stage
 
     workspace = load_workspace()
     return (
@@ -101,7 +102,7 @@ def required_stage_ok() -> bool:
 def test_idle_trial_refused() -> None:
     print("trial refused when idle")
     # Reset by writing a fresh workspace through a new fail path: set status idle.
-    from gnnresearch.workspace import default_workspace, save_workspace
+    from autoresearch.loop.workspace import default_workspace, save_workspace
 
     save_workspace(default_workspace())
     tools = ExperimenterTools(promote_on_pass=False, push=False)
@@ -112,7 +113,7 @@ def test_idle_trial_refused() -> None:
 
 def test_fail_insight_then_coder() -> None:
     print("fail → insight → fresh coder")
-    from gnnresearch.workspace import save_workspace, default_workspace
+    from autoresearch.loop.workspace import save_workspace, default_workspace
 
     save_workspace(default_workspace())
     writer = CodeTools()
@@ -165,7 +166,7 @@ def test_fail_insight_then_coder() -> None:
 
 def test_promotion_freezes_code() -> None:
     print("promotion freezes coder")
-    from gnnresearch.workspace import default_workspace, save_workspace
+    from autoresearch.loop.workspace import default_workspace, save_workspace
 
     save_workspace(default_workspace())
     tools = CodeTools()
@@ -224,7 +225,7 @@ def test_protocol_and_coverage() -> None:
 
 def test_coder_fail_and_lint_block_training() -> None:
     print("unqualified code cannot train")
-    from gnnresearch.workspace import default_workspace, save_workspace
+    from autoresearch.loop.workspace import default_workspace, save_workspace
 
     save_workspace(default_workspace())
     tools = CodeTools()
@@ -244,6 +245,43 @@ def test_coder_fail_and_lint_block_training() -> None:
     refused_lint = ExperimenterTools(promote_on_pass=False, push=False).run_trial()
     _check("lint FAIL blocks trial", refused_lint.get("ok") is False and "lint" in refused_lint["error"])
     _check("lint insight is waiting for coder", "Lint FAIL" in str(load_workspace()["last_insight"]))
+
+
+def test_pr_body_leads_with_scores() -> None:
+    print("review PR leads with scores")
+    result = {
+        "name": "dropout03",
+        "stage": "loso-full",
+        "note": "less regularisation",
+        "summary": {
+            "auc_mean": 0.671,
+            "auc_std": 0.09,
+            "accuracy_mean": 0.62,
+            "accuracy_std": 0.1,
+            "f1_mean": 0.61,
+            "f1_std": 0.11,
+            "best_auc_mean": 0.71,
+        },
+        "verdict": {
+            "metric": "auc_mean",
+            "observed": 0.671,
+            "threshold": 0.66,
+            "margin": 0.011,
+            "passed": True,
+        },
+    }
+    title = pr_title(result)
+    body = pr_body(
+        result,
+        prior={"screen": {"auc_mean": 0.64, "margin": 0.01, "passed": True}},
+    )
+    _check("PR title has AUC and PASS", "0.671" in title and "PASS" in title, title)
+    _check("PR body starts with Scores", body.lstrip().startswith("## Scores"), body[:80])
+    _check(
+        "AUC appears before hypothesis",
+        body.index("**AUC**") < body.index("## Hypothesis"),
+    )
+    _check("best-epoch marked diagnostic", "not a result" in body)
 
 
 def test_coder_cannot_write_gates() -> None:
@@ -267,6 +305,7 @@ def main() -> None:
         test_promotion_freezes_code,
         test_protocol_and_coverage,
         test_coder_fail_and_lint_block_training,
+        test_pr_body_leads_with_scores,
         test_coder_cannot_write_gates,
     ]
     for test in tests:

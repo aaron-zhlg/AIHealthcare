@@ -6,9 +6,9 @@ from typing import Any
 
 from orchestra import SubAgent
 
-from gnnresearch.paths import NEUROASD_DIR, TRIAL_PY, is_writable, rel, resolve_repo_path
-from gnnresearch.protocol import leak_reasons_in_source
-from gnnresearch.workspace import load_workspace, note_code_change, required_stage
+from autoresearch.loop.paths import NEUROASD_DIR, TRIAL_PY, is_writable, rel, resolve_repo_path
+from autoresearch.loop.protocol import leak_reasons_in_source
+from autoresearch.loop.workspace import load_workspace, note_code_change, required_stage
 
 INSTRUCTIONS = """\
 You write code that might improve the ABIDE GNN (ASD vs control). You do not \
@@ -30,7 +30,7 @@ there, the trial will not measure it — edit `trial.py` or `gcn.py` accordingly
 Fisher z, attention pooling, a slightly wider/deeper GCN. 884 subjects will not \
 support a new foundation model.
 - You MAY edit files under neuroasd/ and autoresearch/trial.py. You may NOT edit \
-gates.json, data/, experiments/, gnnresearch/, or medresearch/.
+gates.json, data/, experiments/, autoresearch/loop/, or medresearch/.
 - NEVER select a model using the evaluation / held-out set. Do not gate, report, \
 or save the "best epoch" on val/test/LOSO as the official score. That leak once \
 reported LOSO AUC 0.707 instead of the honest final-epoch 0.623.
@@ -126,7 +126,7 @@ class CodeTools:
                 "workspace": workspace,
             }
         workspace["hypothesis"] = hypothesis.strip()
-        from gnnresearch.workspace import save_workspace
+        from autoresearch.loop.workspace import save_workspace
 
         save_workspace(workspace)
         return {"ok": True, "hypothesis": hypothesis.strip()}

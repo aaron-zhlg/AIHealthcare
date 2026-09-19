@@ -1,6 +1,6 @@
-"""Entry point: ``python -m gnnresearch`` runs the GNN lead orchestrator."""
+"""Deprecated: ``python -m gnnresearch`` forwards to ``python -m autoresearch.loop``."""
 
-from gnnresearch.orchestrator import main
+from autoresearch.loop.orchestrator import main
 
 if __name__ == "__main__":
     main()

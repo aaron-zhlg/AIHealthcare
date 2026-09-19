@@ -1,11 +1,12 @@
-"""GNN write → measure → insight → rewrite loop, built on orchestra."""
+"""Deprecated alias for :mod:`autoresearch.loop`."""
 
-from orchestra import Orchestrator, OrchestratorReport, SubAgent, SubAgentResult
-
-from gnnresearch.coder import CoderAgent
-from gnnresearch.experimenter import ExperimenterAgent
-from gnnresearch.linter import LintAgent
-from gnnresearch.orchestrator import DEFAULT_GOAL, GNNLead
+from autoresearch.loop import (  # noqa: F401
+    CoderAgent,
+    DEFAULT_GOAL,
+    ExperimenterAgent,
+    GNNLead,
+    LintAgent,
+)
 
 __all__ = [
     "CoderAgent",
@@ -13,8 +14,4 @@ __all__ = [
     "ExperimenterAgent",
     "GNNLead",
     "LintAgent",
-    "Orchestrator",
-    "OrchestratorReport",
-    "SubAgent",
-    "SubAgentResult",
 ]

@@ -78,9 +78,9 @@ Full reports: [baseline](experiments/baseline_gcn_v1/README.md) ·
 
 ## Automated Experiments
 
-Two layers. `autoresearch/` is the lab: one trial, honest metrics, a pass/fail
-gate. `gnnresearch/` is the PI: a multi-agent loop that keeps proposing one
-code change, linting it, measuring it, and iterating.
+`autoresearch/` is both the lab and the PI. `trial.py` + `gates.json` run one
+honest trial. `loop/` is the multi-agent driver that keeps proposing one code
+change, linting it, measuring it, and iterating.
 
 ### Gates (`autoresearch/`)
 
@@ -105,12 +105,12 @@ A `screen` PASS is only a filter. Only `loso-full` PASS may open
 See [autoresearch/README.md](autoresearch/README.md) and
 [autoresearch/program.md](autoresearch/program.md).
 
-### Multi-agent loop (`gnnresearch/`)
+### Multi-agent loop (`autoresearch/loop/`)
 
 Built on [orchestra](https://github.com/aaron-zhlg/orchestra). A lead
 orchestrator dispatches **one** worker at a time. Each worker is a **new
 instance** with an empty context window. Cross-round memory is
-`outputs/gnnresearch/workspace.json` (insight, files, lint verdict, stage),
+`outputs/autoresearch/loop/workspace.json` (insight, files, lint verdict, stage),
 not chat history.
 
 ```text
@@ -133,19 +133,20 @@ The experimenter scores `autoresearch/trial.py` (`run_fold`), which imports
 
 ```bash
 export DEEPSEEK_API_KEY=...   # or OPENAI_API_KEY
-uv run python -m gnnresearch.check_loop          # no LLM, no training
-uv run python -m gnnresearch --max-rounds 0      # until loso-full PASS or Ctrl-C
-uv run python -m gnnresearch --max-rounds 0 --fresh   # wipe workspace and restart
+uv run python -m autoresearch.loop.check_loop          # no LLM, no training
+uv run python -m autoresearch.loop                     # until loso-full PASS or Ctrl-C
+uv run python -m autoresearch.loop --max-rounds 2      # local smoke: stop after 2 rounds
+uv run python -m autoresearch.loop --fresh             # wipe workspace and restart
 ```
 
-`--max-rounds 0` is the unbounded loop. It stops on a `loso-full` PASS or
-Ctrl-C (which still writes a session report). Restarting the same command
-continues from `workspace.json`. Each round still costs an LLM call and,
-after lint PASS, a real training job.
+Omit `--max-rounds` (or pass `0`) for the unbounded loop. It stops on a
+`loso-full` PASS or Ctrl-C (which still writes a session report). Restarting
+the same command continues from `workspace.json`. Each round still costs an
+LLM call and, after lint PASS, a real training job.
 
 A passing `loso-full` commits only the training/eval diff plus frozen
-`experiments/<name>_v1/` onto `experiment/trial-<slug>`. It does not merge
-to `main`.
+`experiments/<name>_v1/` onto `experiment/trial-<slug>` and opens a review
+PR whose description starts with the scores. It does not merge to `main`.
 
 ---
 
@@ -178,8 +179,9 @@ neuroasd/
 │       ├── build_aligned_dataset.py   ← align CSV + .1D, compute FC
 │       └── download_func_minimal.py   ← optional 4D fMRI download (~220 GB)
 ├── neuroasd/                         ← GCN model, train, eval, loso_cv, explain
-├── autoresearch/                     ← gated trial runner (screen / LOSO)
-├── gnnresearch/                      ← coder → linter → experimenter loop
+├── autoresearch/
+│   ├── trial.py / gates.json         ← one honest trial
+│   └── loop/                         ← coder → linter → experimenter
 ├── medresearch/                      ← PubMed / ClinicalTrials multi-agent
 ├── experiments/
 │   ├── baseline_gcn_v1/              ← frozen baseline config + results
@@ -221,7 +223,7 @@ uv run python data/abide/scripts/build_aligned_dataset.py
 ./scripts/run_gcn.sh --cpu
 
 # Unbounded GNN search loop (needs an LLM key in .env)
-uv run python -m gnnresearch --max-rounds 0
+uv run python -m autoresearch.loop
 
 # Attribute any trained SimpleGCN; figures go in that experiment's folder
 ./scripts/run_explain.sh --checkpoint outputs/gcn_baseline/final_model.pt \

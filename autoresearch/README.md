@@ -30,11 +30,13 @@ autoresearch/
 ├── gates.json      pass thresholds per stage
 ├── trial.py        runs one config, scores it, writes result.json
 ├── run_trial.sh    branch lifecycle: create, run, push or delete
-└── results/        result.json of trials that passed (committed on trial branches)
+├── results/        result.json of trials that passed (committed on trial branches)
+└── loop/           coder → linter → experimenter (orchestra)
 
 outputs/autoresearch/          local only, gitignored
 ├── ledger.jsonl               append-only record of every trial ever run
-└── trials/<stage>__<name>/    per-trial result.json
+├── trials/<stage>__<name>/    per-trial result.json
+└── loop/workspace.json        multi-agent session (survives Ctrl-C)
 ```
 
 The ledger is gitignored, which means it persists across branch switches and gives the
@@ -72,6 +74,14 @@ Run a trial directly, without touching git:
 uv run python -m autoresearch.trial --name dropout03 --stage screen --dropout 0.3
 ```
 
+Unbounded multi-agent search (needs an LLM key):
+
+```bash
+uv run python -m autoresearch.loop.check_loop
+uv run python -m autoresearch.loop
+uv run python -m autoresearch.loop --max-rounds 2
+```
+
 Establish honest reference points before reading small margins:
 
 ```bash
@@ -97,8 +107,8 @@ experiment/trial-<slug>    one trial, created and usually deleted by run_trial.s
 
 `run_trial.sh` refuses to start with a dirty working tree, branches from `main`, and on
 failure returns you to where you started and deletes the branch. On success it commits
-the change plus the result and pushes the branch for review. It never merges to `main`
-on its own.
+the change plus the result, pushes the branch, and opens a review PR whose description
+starts with the scores. It never merges to `main` on its own.
 
 ---
 

@@ -14,10 +14,10 @@ from typing import Any
 
 from orchestra import SubAgent
 
-from gnnresearch.experimenter import measurement_coverage
-from gnnresearch.paths import REPO_ROOT, resolve_repo_path
-from gnnresearch.protocol import leak_reasons_in_source
-from gnnresearch.workspace import load_workspace, record_lint
+from autoresearch.loop.experimenter import measurement_coverage
+from autoresearch.loop.paths import REPO_ROOT, resolve_repo_path
+from autoresearch.loop.protocol import leak_reasons_in_source
+from autoresearch.loop.workspace import load_workspace, record_lint
 
 INSTRUCTIONS = """\
 You lint the coder's pending edit. You do not write model code and you do not train.

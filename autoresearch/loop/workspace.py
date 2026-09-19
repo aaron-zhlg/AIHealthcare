@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from gnnresearch.paths import workspace_path
+from autoresearch.loop.paths import workspace_path
 
 STATUSES = (
     "idle",

@@ -8,11 +8,11 @@ from typing import Any
 
 from orchestra import Assignment, LLMError, Orchestrator, OrchestratorReport, SubAgentResult
 
-from gnnresearch.coder import CoderAgent
-from gnnresearch.experimenter import ExperimenterAgent
-from gnnresearch.linter import LintAgent
-from gnnresearch.paths import workspace_path
-from gnnresearch.workspace import load_workspace, mark_coder_outcome, next_role, record_lint
+from autoresearch.loop.coder import CoderAgent
+from autoresearch.loop.experimenter import ExperimenterAgent
+from autoresearch.loop.linter import LintAgent
+from autoresearch.loop.paths import workspace_path
+from autoresearch.loop.workspace import load_workspace, mark_coder_outcome, next_role, record_lint
 
 DEFAULT_GOAL = (
     "Improve the GNN's cross-site ASD vs control AUC on ABIDE by editing training "
@@ -194,7 +194,7 @@ class GNNLead(Orchestrator):
         kwargs.setdefault("evaluator_instructions", EVALUATOR_INSTRUCTIONS)
         kwargs.setdefault("synthesizer_instructions", SYNTHESIZER_INSTRUCTIONS)
         kwargs.setdefault("citation_instructions", CITATION_INSTRUCTIONS)
-        kwargs.setdefault("max_rounds", 10)
+        kwargs.setdefault("max_rounds", 0)
         kwargs.setdefault("max_parallel", 1)
         kwargs.setdefault("add_citations", False)
         if subagent_kwargs is None:
@@ -311,8 +311,9 @@ def main() -> None:
     parser.add_argument(
         "--max-rounds",
         type=int,
-        default=10,
-        help="Max write/lint/run rounds. 0 = run until loso-full PASS or Ctrl-C.",
+        default=0,
+        metavar="N",
+        help="Max write/lint/run rounds for a local smoke. Omit or 0 = until loso-full PASS or Ctrl-C.",
     )
     parser.add_argument(
         "--fresh",
@@ -322,7 +323,7 @@ def main() -> None:
     parser.add_argument("--no-push", action="store_true", help="Do not git push on loso-full PASS.")
     parser.add_argument("--no-promote", action="store_true", help="Do not open a review branch.")
     parser.add_argument("--quiet", action="store_true")
-    parser.add_argument("--log-dir", default="outputs/gnnresearch/logs")
+    parser.add_argument("--log-dir", default="outputs/autoresearch/loop/logs")
     args = parser.parse_args()
 
     def build() -> GNNLead:

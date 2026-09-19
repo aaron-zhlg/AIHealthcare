@@ -87,7 +87,13 @@ if [[ $TRIAL_EXIT -eq 0 ]]; then
   git add -A
   git commit --quiet -m "Trial ${NAME} (${STAGE}): ${NOTE:-no note}"
   git push --quiet -u origin "$TRIAL_BRANCH"
-  echo "==> Pushed ${TRIAL_BRANCH}; review before merging to main"
+  echo "==> Pushed ${TRIAL_BRANCH}; opening a review PR (scores first)"
+  set +e
+  uv run python -m autoresearch.loop.promote \
+    --pr-from-result "$RESULT_FILE" \
+    --branch "$TRIAL_BRANCH"
+  set -e
+  echo "==> Review before merging to main"
   exit 0
 fi
 

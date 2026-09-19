@@ -10,10 +10,10 @@ from typing import Any
 
 from orchestra import SubAgent
 
-from gnnresearch.paths import GATES_PATH, LEDGER_PATH, PROGRAM_PATH, REPO_ROOT, trials_dir
-from gnnresearch.promote import promote
-from gnnresearch.protocol import protocol_notes, protocol_ok
-from gnnresearch.workspace import (
+from autoresearch.loop.paths import GATES_PATH, LEDGER_PATH, PROGRAM_PATH, REPO_ROOT, trials_dir
+from autoresearch.loop.promote import promote
+from autoresearch.loop.protocol import protocol_notes, protocol_ok
+from autoresearch.loop.workspace import (
     apply_trial_outcome,
     coder_finished_cleanly,
     lint_passed,
