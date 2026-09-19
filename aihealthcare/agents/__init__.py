@@ -1,12 +1,12 @@
 """Multi-agent medical research system.
 
-An orchestrator-worker architecture (see Anthropic's "How we built our
-multi-agent research system") built on the DeepSeek agent loop:
+An orchestrator-worker architecture built on the reusable :mod:`orchestra`
+framework (LLM client + tool-calling loop + orchestrator). This package supplies
+only the medical specialization:
 
-* :mod:`aihealthcare.agents.deepseek`      — LLM backend (client + tool-calling loop).
 * :mod:`aihealthcare.agents.literature`    — PubMed literature sub-agent.
 * :mod:`aihealthcare.agents.trials`        — ClinicalTrials.gov sub-agent.
-* :mod:`aihealthcare.agents.orchestrator`  — LeadResearcher + CitationAgent.
+* :mod:`aihealthcare.agents.orchestrator`  — LeadResearcher + medical prompts.
 
 Quick start::
 
@@ -18,40 +18,49 @@ Quick start::
 Or run one sub-agent on its own::
 
     from aihealthcare.agents import MedicalLiteratureAgent
-    print(MedicalLiteratureAgent().run("Recent RCTs on semaglutide for weight loss"))
+    print(MedicalLiteratureAgent().run("Recent RCTs on semaglutide for weight loss").findings)
 """
 
-from aihealthcare.agents.deepseek import Conversation, DeepSeekError, ResponsesClient
-from aihealthcare.agents.literature import MedicalLiteratureAgent, SearchReport
-from aihealthcare.agents.orchestrator import (
+# Framework types (re-exported for convenience) live in orchestra.
+from orchestra import (
     Assignment,
-    LeadResearcher,
-    LiteratureWorker,
-    ResearchReport,
+    ChatClient,
+    Conversation,
+    LLMError,
+    SubAgent,
     SubAgentResult,
     SubAgentSpec,
-    SubAgentWorker,
-    TrialsWorker,
+)
+
+from aihealthcare.agents.literature import MedicalLiteratureAgent, PubMedTools, search_literature
+from aihealthcare.agents.orchestrator import (
+    DEFAULT_MODEL,
+    LeadResearcher,
+    ResearchReport,
     deep_research,
     default_subagent_specs,
 )
-from aihealthcare.agents.trials import ClinicalTrialsAgent
+from aihealthcare.agents.trials import ClinicalTrialsAgent, ClinicalTrialsTools
 
 __all__ = [
+    # framework (from orchestra)
     "Conversation",
-    "ResponsesClient",
-    "DeepSeekError",
+    "ChatClient",
+    "LLMError",
+    "SubAgent",
+    "SubAgentResult",
+    "SubAgentSpec",
+    "Assignment",
+    # medical subagents
     "MedicalLiteratureAgent",
-    "SearchReport",
+    "PubMedTools",
+    "search_literature",
     "ClinicalTrialsAgent",
+    "ClinicalTrialsTools",
+    # orchestrator
     "LeadResearcher",
     "ResearchReport",
-    "SubAgentSpec",
-    "SubAgentWorker",
-    "SubAgentResult",
-    "Assignment",
-    "LiteratureWorker",
-    "TrialsWorker",
     "default_subagent_specs",
     "deep_research",
+    "DEFAULT_MODEL",
 ]

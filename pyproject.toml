@@ -9,7 +9,15 @@ dependencies = [
     "numpy>=2.5.2",
     "scikit-learn>=1.9.0",
     "torch>=2.13.0",
+    # Multi-agent framework powering aihealthcare.agents (orchestrator + subagents).
+    "orchestra-agents",
 ]
+
+# orchestra lives as a sibling repo; consume it as a local path dependency.
+# Swap this for a git/PyPI source once orchestra is published, e.g.
+#   orchestra-agents = { git = "https://github.com/aaron-zhlg/orchestra" }
+[tool.uv.sources]
+orchestra-agents = { path = "../orchestra" }
 
 [build-system]
 requires = ["hatchling"]

@@ -5,6 +5,10 @@ A second specialized worker for the multi-agent research system (see
 searches the published literature on PubMed, this agent searches *registered
 clinical trials* — study status, phase, interventions, eligibility, and outcomes.
 
+Like its sibling, it is a thin :class:`orchestra.SubAgent`: all the domain work
+lives in a self-contained toolset (:class:`ClinicalTrialsTools`); the sub-agent
+just names it, describes it, and points its prompt at those tools.
+
     export DEEPSEEK_API_KEY=sk-...
     uv run python -m aihealthcare.agents.trials "Phase 3 trials of semaglutide for obesity"
 
@@ -20,7 +24,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from aihealthcare.agents.deepseek import Conversation, ResponsesClient
+from orchestra import SubAgent
 
 API_BASE = "https://clinicaltrials.gov/api/v2"
 STUDY_UI = "https://clinicaltrials.gov/study"
@@ -100,7 +104,12 @@ def _study_digest(study: dict[str, Any]) -> dict[str, Any]:
 
 
 class ClinicalTrialsTools:
-    """ClinicalTrials.gov endpoints exposed as agent-callable tools."""
+    """ClinicalTrials.gov endpoints exposed as agent-callable tools.
+
+    Implements the toolset protocol :mod:`orchestra` understands: ``as_tools()`` +
+    ``sources()`` (every NCT id touched, so the orchestrator can build citations
+    automatically).
+    """
 
     def __init__(self, client: ClinicalTrialsClient | None = None):
         self.client = client or ClinicalTrialsClient()
@@ -171,6 +180,10 @@ class ClinicalTrialsTools:
     def as_tools(self) -> list[typing.Callable[..., Any]]:
         return [self.search_trials, self.get_trial]
 
+    def sources(self) -> list[str]:
+        """Every NCT id touched this run (already usable as a citation token)."""
+        return list(self.seen_ncts)
+
 
 DEFAULT_INSTRUCTIONS = """\
 You are a clinical-trials research specialist operating as an autonomous \
@@ -203,7 +216,7 @@ Only cite trials you actually retrieved.
 """
 
 
-class ClinicalTrialsAgent:
+class ClinicalTrialsAgent(SubAgent):
     """Sub-agent that searches and summarizes registered clinical trials."""
 
     name = "clinical_trials"
@@ -214,58 +227,10 @@ class ClinicalTrialsAgent:
         "primary outcome measures. Not for published results/abstracts (use "
         "pubmed_literature for those)."
     )
+    instructions = DEFAULT_INSTRUCTIONS
 
-    def __init__(
-        self,
-        client: ResponsesClient | None = None,
-        *,
-        instructions: str = DEFAULT_INSTRUCTIONS,
-        model: str | None = None,
-        ct_client: ClinicalTrialsClient | None = None,
-        max_tool_rounds: int = 12,
-        verbose: bool = False,
-        **conversation_params: Any,
-    ):
-        self.instructions = instructions
-        self.model = model
-        self.max_tool_rounds = max_tool_rounds
-        self.verbose = verbose
-        self._client = client
-        self._ct_client = ct_client
-        self._conversation_params = conversation_params
-
-    def run(
-        self,
-        objective: str,
-        on_tool_call: typing.Callable[[str, str, str], None] | None = None,
-    ) -> tuple[str, list[str]]:
-        """Run the trial-search loop; return (summary, list of NCT ids touched).
-
-        Args:
-            objective: The search objective.
-            on_tool_call: Optional extra sink invoked as ``(name, arguments, result)``
-                for every tool call, e.g. to stream the full trajectory to a log file.
-        """
-        tools = ClinicalTrialsTools(self._ct_client)
-
-        def _on_tool_call(name: str, arguments: str, result: str) -> None:
-            if self.verbose:
-                preview = result if len(result) <= 400 else result[:400] + " …"
-                print(f"\n[trials tool] {name}({arguments})\n     -> {preview}\n", flush=True)
-            if on_tool_call is not None:
-                on_tool_call(name, arguments, result)
-
-        conversation = Conversation(
-            self._client or ResponsesClient(),
-            instructions=self.instructions,
-            tools=tools.as_tools(),
-            model=self.model,
-            max_tool_rounds=self.max_tool_rounds,
-            on_tool_call=_on_tool_call,
-            **self._conversation_params,
-        )
-        summary = conversation.ask(objective)
-        return summary, list(tools.seen_ncts)
+    def create_tools(self) -> ClinicalTrialsTools:
+        return ClinicalTrialsTools()
 
 
 def main() -> None:
@@ -278,9 +243,9 @@ def main() -> None:
     args = parser.parse_args()
 
     agent = ClinicalTrialsAgent(model=args.model, verbose=not args.quiet)
-    summary, ncts = agent.run(" ".join(args.objective))
-    print("\n" + summary)
-    print(f"\n[touched {len(ncts)} trials]")
+    result = agent.run(" ".join(args.objective))
+    print("\n" + result.findings)
+    print(f"\n[touched {len(result.sources)} trials]")
 
 
 if __name__ == "__main__":

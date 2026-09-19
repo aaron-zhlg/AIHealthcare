@@ -1,11 +1,16 @@
 """Medical literature search sub-agent, powered by PubMed E-utilities.
 
 This module wraps NCBI's Entrez Programming Utilities (E-utilities) as function
-tools and drives them with the DeepSeek agent loop in
-:mod:`aihealthcare.agents.deepseek`. The result is a focused *sub-agent*: give it
-a natural-language ``goal`` and it searches PubMed, reads abstracts, refines its
-query as needed, and returns a cited summary — all inside a single tool-calling
-loop.
+tools and drives them with the :mod:`orchestra` agent loop. The result is a
+focused *sub-agent*: give it a natural-language ``goal`` and it searches PubMed,
+reads abstracts, refines its query as needed, and returns a cited summary — all
+inside a single tool-calling loop.
+
+The framework machinery (LLM client, tool-calling loop, orchestration) lives in
+the reusable :mod:`orchestra` package; everything in this file is PubMed-specific.
+All the domain work lives in a self-contained toolset (:class:`PubMedTools`); the
+sub-agent itself is barely more than a name, a description, a prompt, and "here
+are my tools".
 
     export DEEPSEEK_API_KEY=sk-...
     # optional, lifts the NCBI rate limit from 3 to 10 requests/second:
@@ -17,9 +22,9 @@ Programmatic use as a sub-agent::
     from aihealthcare.agents.literature import MedicalLiteratureAgent
 
     agent = MedicalLiteratureAgent()
-    report = agent.run("Recent RCTs on semaglutide for weight loss in non-diabetics")
-    print(report.summary)
-    print(report.pmids)  # every PMID the agent touched
+    result = agent.run("Recent RCTs on semaglutide for weight loss in non-diabetics")
+    print(result.findings)
+    print(result.sources)  # every PMID the agent touched, e.g. "PMID:38000000"
 
 Reference: E-utilities Quick Start, NCBI Bookshelf NBK25500
 https://www.ncbi.nlm.nih.gov/books/NBK25500/
@@ -36,18 +41,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
 from typing import Any
 
-from aihealthcare.agents.deepseek import Conversation, ResponsesClient
+from orchestra import SubAgent
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 PUBMED_UI = "https://pubmed.ncbi.nlm.nih.gov"
 TOOL_NAME = "aihealthcare-litsearch"
 
-# The DeepSeek endpoint is stateless, so the whole conversation (including every
-# abstract fetched so far) is resent on each step. Capping abstract length keeps
-# that context — and therefore per-step latency and cost — from ballooning.
+# The whole conversation (including every abstract fetched so far) is resent on
+# each step, so capping abstract length keeps per-step latency and cost in check.
 MAX_ABSTRACT_CHARS = 2500
 
 # NCBI asks callers to identify themselves and to stay under a request-rate
@@ -68,9 +71,8 @@ class EUtilsError(RuntimeError):
 class EUtilsClient:
     """Minimal, rate-limited client for the NCBI E-utilities endpoints.
 
-    Only the standard library is used, mirroring :mod:`aihealthcare.agents.deepseek`.
-    A shared lock plus a monotonic timestamp enforce the NCBI request-rate
-    policy across threads.
+    Only the standard library is used. A shared lock plus a monotonic timestamp
+    enforce the NCBI request-rate policy across threads.
     """
 
     _lock = threading.Lock()
@@ -236,8 +238,9 @@ def _normalize_ids(ids: str | typing.Sequence[str | int]) -> str:
 class PubMedTools:
     """PubMed E-utilities exposed as agent-callable function tools.
 
-    Each method returns JSON-serializable data (dicts/lists) so the agent loop
-    in :mod:`aihealthcare.agents.deepseek` can hand results straight back to the model.
+    Implements the informal *toolset* protocol :mod:`orchestra` understands:
+    ``as_tools()`` returns the callables, and ``sources()`` returns every PMID the
+    agent touched (so the orchestrator can build citations automatically).
     """
 
     def __init__(self, client: EUtilsClient | None = None, *, default_db: str = "pubmed"):
@@ -379,6 +382,10 @@ class PubMedTools:
             self.find_related_articles,
         ]
 
+    def sources(self) -> list[str]:
+        """Every PMID touched this run, formatted as citation tokens (``PMID:<id>``)."""
+        return [f"PMID:{p}" for p in self.seen_pmids]
+
 
 # --------------------------------------------------------------------------- #
 # The sub-agent
@@ -429,24 +436,12 @@ say so plainly rather than inventing citations.
 """
 
 
-@dataclass
-class SearchReport:
-    """The result of a sub-agent run."""
-
-    goal: str
-    summary: str
-    pmids: list[str] = field(default_factory=list)
-    tool_calls: list[dict[str, str]] = field(default_factory=list)
-
-    def __str__(self) -> str:  # convenient for print()
-        return self.summary
-
-
-class MedicalLiteratureAgent:
+class MedicalLiteratureAgent(SubAgent):
     """A focused sub-agent that searches and summarizes medical literature.
 
-    It accepts a natural-language ``goal``, runs a tool-calling loop over PubMed
-    E-utilities, and returns a cited :class:`SearchReport`.
+    Thin :class:`orchestra.SubAgent` subclass: it accepts a natural-language
+    objective, runs the framework's tool-calling loop over PubMed E-utilities, and
+    returns a cited :class:`orchestra.SubAgentResult` (``.findings`` + ``.sources``).
     """
 
     name = "pubmed_literature"
@@ -456,84 +451,13 @@ class MedicalLiteratureAgent:
         "meta-analyses, mechanisms, and reading article abstracts. Not for the "
         "status of ongoing/registered trials (use clinical_trials for those)."
     )
+    instructions = DEFAULT_INSTRUCTIONS
 
-    def __init__(
-        self,
-        client: ResponsesClient | None = None,
-        *,
-        instructions: str = DEFAULT_INSTRUCTIONS,
-        model: str | None = None,
-        eutils_client: EUtilsClient | None = None,
-        max_tool_rounds: int = 16,
-        verbose: bool = False,
-        reasoning_effort: str | None = None,
-        **conversation_params: Any,
-    ):
-        self.instructions = instructions
-        self.model = model
-        self.max_tool_rounds = max_tool_rounds
-        self.verbose = verbose
-        self.reasoning_effort = reasoning_effort
-        self._client = client
-        self._eutils_client = eutils_client
-        self._conversation_params = conversation_params
-
-    def _build(self, extra_sink: typing.Callable[[str, str, str], None] | None = None) -> tuple[Conversation, PubMedTools]:
-        tools = PubMedTools(self._eutils_client)
-
-        def on_tool_call(name: str, arguments: str, result: str) -> None:
-            self._last_tool_calls.append({"name": name, "arguments": arguments, "result": result})
-            if self.verbose:
-                preview = result if len(result) <= 500 else result[:500] + " …"
-                print(f"\n[tool] {name}({arguments})\n     -> {preview}\n", flush=True)
-            if extra_sink is not None:
-                extra_sink(name, arguments, result)
-
-        params = dict(self._conversation_params)
-        if self.reasoning_effort:
-            params.setdefault("reasoning", {"effort": self.reasoning_effort})
-
-        conversation = Conversation(
-            self._client or ResponsesClient(),
-            instructions=self.instructions,
-            tools=tools.as_tools(),
-            model=self.model,
-            max_tool_rounds=self.max_tool_rounds,
-            on_tool_call=on_tool_call,
-            **params,
-        )
-        return conversation, tools
-
-    def run(
-        self,
-        goal: str,
-        on_tool_call: typing.Callable[[str, str, str], None] | None = None,
-    ) -> SearchReport:
-        """Execute the search-and-summarize loop for ``goal`` and return the report.
-
-        Args:
-            goal: The research objective.
-            on_tool_call: Optional extra sink invoked as ``(name, arguments, result)``
-                for every tool call, e.g. to stream the full trajectory to a log file.
-        """
-        self._last_tool_calls: list[dict[str, str]] = []
-        conversation, tools = self._build(on_tool_call)
-        summary = conversation.ask(goal)
-        return SearchReport(
-            goal=goal,
-            summary=summary,
-            pmids=list(tools.seen_pmids),
-            tool_calls=list(self._last_tool_calls),
-        )
-
-    def run_stream(self, goal: str) -> typing.Iterator[str]:
-        """Same as :meth:`run` but yields the final answer as streaming text deltas."""
-        self._last_tool_calls = []
-        conversation, _ = self._build()
-        yield from conversation.ask_stream(goal)
+    def create_tools(self) -> PubMedTools:
+        return PubMedTools()
 
 
-def search_literature(goal: str, **kwargs: Any) -> SearchReport:
+def search_literature(goal: str, **kwargs: Any):
     """One-shot convenience wrapper: build an agent and run ``goal``."""
     return MedicalLiteratureAgent(**kwargs).run(goal)
 
@@ -547,10 +471,10 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Medical literature search sub-agent (PubMed E-utilities + DeepSeek)."
+        description="Medical literature search sub-agent (PubMed E-utilities + orchestra)."
     )
     parser.add_argument("goal", nargs="*", help="Research goal; omit for an interactive session.")
-    parser.add_argument("--model", default=None, help="Override the DeepSeek model.")
+    parser.add_argument("--model", default=None, help="Override the model.")
     parser.add_argument("--max-rounds", type=int, default=16, help="Max tool-calling rounds.")
     parser.add_argument("--effort", default=None, help="Thinking effort: none/low/medium/high/max.")
     parser.add_argument("--quiet", action="store_true", help="Do not print tool calls.")
@@ -566,9 +490,9 @@ def main() -> None:
 
     def answer(goal: str) -> None:
         if args.no_stream:
-            report = agent.run(goal)
-            print("\n" + report.summary)
-            print(f"\n[touched {len(report.pmids)} PMIDs]")
+            result = agent.run(goal)
+            print("\n" + result.findings)
+            print(f"\n[touched {len(result.sources)} PMIDs]")
             return
         for delta in agent.run_stream(goal):
             print(delta, end="", flush=True)
