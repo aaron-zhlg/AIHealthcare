@@ -126,9 +126,11 @@ The scored path is `autoresearch.trial.run_fold`, which imports `SimpleGCN` and
 measurement gap: lint FAILs it, because a trial would not see the change.
 
 While status is `needs_loso_subset` or `needs_loso_full`, the current diff is
-frozen. A FAIL restores coder-writable files to the last `loso-full` winner
-(or HEAD if there is none). Each experimenter instance may call `run_trial`
-once.
+frozen. A FAIL archives the diff under `outputs/autoresearch/loop/graveyard/`
+and restores coder-writable files to the last `loso-full` winner (or HEAD if
+there is none). The rejected mechanism is appended to `workspace.ruled_out`
+and injected into every later coder briefing. Each experimenter instance may
+call `run_trial` once.
 
 A protocol-clean `loso-full` PASS opens a review PR (scores first), snapshots
 the winning files as the new baseline, and **keeps searching** — the next

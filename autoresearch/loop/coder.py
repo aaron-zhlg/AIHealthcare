@@ -19,8 +19,10 @@ If a previous trial exists, you MUST call read_last_insight (and read_workspace)
 before any edit, then implement ONE new change that follows that insight.
 
 Rules:
-- Interpret the insight: what was ruled out, what the next_code_change says, \
-what not to repeat. Do not retry a ruled-out mechanism.
+- Interpret the insight and the workspace ``ruled_out`` list: what was tried, \
+what the next_code_change says, what not to repeat. Do not retry a ruled-out \
+mechanism. The working tree is the last loso-full winner or HEAD — failed \
+diffs are archived under ``ruled_out[].patch``, not left on disk.
 - Change ONE thing per turn (one mechanism). Keep the first edit tiny: one \
 function or a few lines. Do not attempt DANN / multi-file rewrites in one turn.
 - Failed edits revert to the last loso-full winner (or HEAD if none). \
@@ -85,10 +87,20 @@ class CodeTools:
         only memory of the measurement round; you do not inherit that conversation.
         """
         self._read_insight = True
-        insight = load_workspace().get("last_insight")
+        data = load_workspace()
+        insight = data.get("last_insight")
+        payload = {
+            "ok": True,
+            "last_insight": insight,
+            "ruled_out": data.get("ruled_out") or [],
+            "working_tree": (
+                "last loso-full winner, or HEAD if none. Failed diffs are "
+                "archived under ruled_out[].patch, not on disk."
+            ),
+        }
         if not insight:
-            return {"ok": True, "last_insight": None, "note": "no prior trial in this session"}
-        return {"ok": True, "last_insight": insight}
+            payload["note"] = "no prior trial in this session"
+        return payload
 
     def list_trainable_files(self) -> list[str]:
         """List Python files the coder is allowed to edit.

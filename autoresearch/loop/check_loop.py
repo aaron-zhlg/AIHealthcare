@@ -146,6 +146,19 @@ def test_fail_insight_then_coder() -> None:
     _check("FAIL resets coder_ok", workspace.get("coder_ok") is None)
     _check("FAIL reverts the scratch edit", not (_TMP / "model.py").exists())
     _check("insight persisted", bool(workspace.get("last_insight")))
+    ruled = workspace.get("ruled_out") or []
+    _check("FAIL records ruled_out", bool(ruled), str(ruled))
+    patch = Path((ruled[0] or {}).get("patch") or "")
+    _check(
+        "FAIL archives the failed diff",
+        patch.is_dir() and (patch / "files").exists(),
+        str(patch),
+    )
+    _check(
+        "ruled_out summary from insight",
+        any(item.get("summary") == "tiny dropout tweak" for item in ruled),
+        str(ruled),
+    )
 
     blind = CodeTools()
     try:
@@ -159,6 +172,12 @@ def test_fail_insight_then_coder() -> None:
     _check(
         "fresh coder sees next_code_change",
         insight["last_insight"]["next_code_change"].startswith("try class weights"),
+    )
+    _check(
+        "fresh coder sees the ruled_out list",
+        bool(insight.get("ruled_out"))
+        and insight["ruled_out"][0].get("hypothesis") == "tiny dropout tweak",
+        str(insight.get("ruled_out")),
     )
     informed.record_hypothesis("class-weighted loss")
     second = _write_scratch(informed, "model.py", "weight = True\n")

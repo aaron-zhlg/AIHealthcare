@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import difflib
+import json
 import os
+import re
+import shutil
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -94,11 +99,101 @@ def baseline_dir() -> Path:
 
 
 def clear_baseline() -> None:
-    import shutil
-
     path = baseline_dir()
     if path.exists():
         shutil.rmtree(path)
+
+
+def graveyard_dir() -> Path:
+    return workspace_path().parent / "graveyard"
+
+
+def clear_graveyard() -> None:
+    path = graveyard_dir()
+    if path.exists():
+        shutil.rmtree(path)
+
+
+def clear_session_dirs() -> None:
+    """Wipe baseline snapshots and archived failed diffs. Workspace is separate."""
+    clear_baseline()
+    clear_graveyard()
+
+
+def _slug(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    return slug[:48] or "change"
+
+
+def _revert_source_text(path: Path) -> str:
+    """Text a FAIL would restore this file to (snapshot, else HEAD, else empty)."""
+    snap = _baseline_copy_path(path)
+    if snap.is_file():
+        return snap.read_text(encoding="utf-8", errors="replace")
+    extra = _writable_extra()
+    if extra and path.is_relative_to(extra):
+        return ""
+    if not is_writable(path):
+        return ""
+    rel_str = rel(path)
+    shown = subprocess.run(
+        ["git", "show", f"HEAD:{rel_str}"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if shown.returncode == 0:
+        return shown.stdout.decode("utf-8", errors="replace")
+    return ""
+
+
+def archive_failed_diff(name: str, rel_paths: list[str]) -> str | None:
+    """Copy a failed edit off the working tree before revert.
+
+    Writes ``graveyard/<slug>/files/...`` and ``diff.patch`` so later coders
+    can inspect what was tried without it remaining on disk.
+    """
+    dest = graveyard_dir() / _slug(name)
+    dest.mkdir(parents=True, exist_ok=True)
+    extra = _writable_extra()
+    saved: list[str] = []
+    chunks: list[str] = []
+    for user_path in rel_paths:
+        try:
+            path = resolve_repo_path(user_path)
+        except ValueError:
+            continue
+        if not path.is_file():
+            continue
+        if extra and path.is_relative_to(extra):
+            stored = Path("_scratch") / path.relative_to(extra)
+        else:
+            stored = Path(rel(path))
+        copy_to = dest / "files" / stored
+        copy_to.parent.mkdir(parents=True, exist_ok=True)
+        copy_to.write_bytes(path.read_bytes())
+        old = _revert_source_text(path)
+        new = path.read_text(encoding="utf-8", errors="replace")
+        if old != new:
+            chunks.append(
+                "".join(
+                    difflib.unified_diff(
+                        old.splitlines(keepends=True),
+                        new.splitlines(keepends=True),
+                        fromfile=f"a/{stored}",
+                        tofile=f"b/{stored}",
+                    )
+                )
+            )
+        saved.append(str(stored))
+    if not saved:
+        return None
+    (dest / "diff.patch").write_text("".join(chunks) or "# no textual diff\n", encoding="utf-8")
+    (dest / "meta.json").write_text(
+        json.dumps({"name": name, "files": saved}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return str(dest)
 
 
 def _baseline_copy_path(path: Path) -> Path:
@@ -131,8 +226,6 @@ def revert_coder_files(rel_paths: list[str]) -> list[str]:
     Prefer the last winning snapshot. If none, tracked files go back to HEAD and
     new files are deleted.
     """
-    import subprocess
-
     reverted: list[str] = []
     extra = _writable_extra()
     for user_path in rel_paths:

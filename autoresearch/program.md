@@ -40,8 +40,9 @@ Full numbers live in `autoresearch/gates.json`.
    teaches nothing about which one mattered.
 5. **Gate on final-epoch metrics.** `autoresearch/trial.py` reports these by design;
    do not add best-epoch selection on the test fold, which leaks.
-6. **Do not stack a new idea on a failed diff.** After a FAIL the loop restores
-   coder-writable files to the last loso-full winner (or HEAD if there is none).
+6. **Do not stack a new idea on a failed diff.** After a FAIL the loop archives
+   the diff and restores coder-writable files to the last loso-full winner (or
+   HEAD if there is none). The rejected mechanism stays in `workspace.ruled_out`.
 7. **Do not tune against `loso-full`.** It is the confirmation stage, not a search
    signal. Repeatedly sweeping on it overfits the only honest estimate available.
 

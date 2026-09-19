@@ -12,7 +12,7 @@ from orchestra import Assignment, LLMError, Orchestrator, OrchestratorReport, Su
 from autoresearch.loop.coder import CoderAgent
 from autoresearch.loop.experimenter import ExperimenterAgent
 from autoresearch.loop.linter import LintAgent
-from autoresearch.loop.paths import clear_baseline, workspace_path
+from autoresearch.loop.paths import clear_session_dirs, workspace_path
 from autoresearch.loop.workspace import load_workspace, mark_coder_outcome, next_role, record_lint
 
 DEFAULT_GOAL = (
@@ -70,8 +70,9 @@ You inspect findings and decide the next SINGLE step of the loop.
 - After experimenter, if the same code still needs loso-subset or loso-full: \
 spawn experimenter again. One stage per experimenter instance.
 - After experimenter FAIL (or a completed stage that needs a new idea): spawn \
-coder. Put the insight into the coder objective: ruled out, next_code_change, \
-final-epoch AUC vs gate. The coder is a fresh instance and cannot see this chat.
+coder. The failed diff has been reverted. Do not describe that code as current. \
+Put workspace.ruled_out, the insight, and next_code_change into the coder \
+objective. The coder is a fresh instance and cannot see this chat.
 - After loso-full PASS: if accuracy is still below the 80% target, spawn coder \
 on the winning code (do not revert). complete is true only when accuracy \
 reaches the target.
@@ -112,6 +113,17 @@ subagents actually produced. Do not add papers.
 """
 
 
+def _ruled_out_block() -> str:
+    items = load_workspace().get("ruled_out") or []
+    if not items:
+        return "No mechanisms have been ruled out yet."
+    return (
+        "Ruled-out mechanisms (do not retry). The working tree does not contain "
+        "these diffs; patches live at ruled_out[].patch:\n"
+        + json.dumps(items, indent=2)
+    )
+
+
 def _insight_block() -> str:
     insight = load_workspace().get("last_insight") or {}
     if not insight:
@@ -127,8 +139,10 @@ def _coder_assignment(goal: str, proposed: Assignment | None = None) -> Assignme
     return Assignment(
         "coder",
         (
-            f"{extra}\n\n{_insight_block()}\n\n"
-            "Implement exactly one new mechanism. Do not repeat a ruled-out idea."
+            f"{extra}\n\n{_ruled_out_block()}\n\n{_insight_block()}\n\n"
+            "The working tree is the last loso-full winner or HEAD, not the last "
+            "failed diff. Implement exactly one new mechanism. Do not repeat a "
+            "ruled-out idea."
         ),
         "Name the hypothesis, files edited, and a 3-line summary of the diff.",
     )
@@ -357,7 +371,7 @@ def main() -> None:
         if path.exists():
             path.unlink()
             print(f"cleared {path}", file=sys.stderr)
-        clear_baseline()
+        clear_session_dirs()
 
     goal = " ".join(args.goal).strip() or DEFAULT_GOAL
     try:

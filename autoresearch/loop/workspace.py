@@ -7,7 +7,12 @@ import os
 import re
 from typing import Any
 
-from autoresearch.loop.paths import revert_coder_files, snapshot_coder_files, workspace_path
+from autoresearch.loop.paths import (
+    archive_failed_diff,
+    revert_coder_files,
+    snapshot_coder_files,
+    workspace_path,
+)
 
 STATUSES = (
     "idle",
@@ -48,7 +53,23 @@ def default_workspace() -> dict[str, Any]:
         "lint_report": None,
         "history": [],
         "last_win": None,
+        "ruled_out": [],
     }
+
+
+def _record_ruled_out(data: dict[str, Any], entry: dict[str, Any]) -> None:
+    """Append or merge a rejected mechanism. Same trial name updates in place."""
+    items = list(data.get("ruled_out") or [])
+    name = entry.get("name")
+    merged = {key: value for key, value in entry.items() if value not in (None, "")}
+    if name:
+        for index in range(len(items) - 1, -1, -1):
+            if items[index].get("name") == name:
+                items[index] = {**items[index], **merged}
+                data["ruled_out"] = items
+                return
+    items.append(merged)
+    data["ruled_out"] = items
 
 
 def load_workspace() -> dict[str, Any]:
@@ -193,11 +214,26 @@ def apply_trial_outcome(
         "did_not_beat_last_win": gate_passed and not improved,
     }
     if not won:
+        files = list(data.get("files_changed") or [])
+        archived = archive_failed_diff(name, files)
+        _record_ruled_out(
+            data,
+            {
+                "name": name,
+                "stage": stage,
+                "hypothesis": data.get("hypothesis") or "",
+                "auc_mean": auc,
+                "accuracy_mean": acc,
+                "margin": verdict.get("margin"),
+                "patch": archived,
+            },
+        )
         data["status"] = "awaiting_new_code"
         data["coder_ok"] = None
         data["lint_ok"] = None
         data["lint_report"] = None
-        data["reverted"] = revert_coder_files(list(data.get("files_changed") or []))
+        data["archived"] = archived
+        data["reverted"] = revert_coder_files(files)
     elif stage == "loso-full":
         data["last_win"] = {
             "name": name,
@@ -249,5 +285,14 @@ def next_role(workspace: dict[str, Any] | None = None) -> str | None:
 def save_insight(insight: dict[str, Any]) -> dict[str, Any]:
     data = load_workspace()
     data["last_insight"] = insight
+    if insight.get("passed") is False and insight.get("source") != "linter":
+        _record_ruled_out(
+            data,
+            {
+                "name": insight.get("name") or data.get("current_name"),
+                "stage": insight.get("stage"),
+                "summary": str(insight.get("ruled_out") or "")[:400],
+            },
+        )
     save_workspace(data)
     return data
