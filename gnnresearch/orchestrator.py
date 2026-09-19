@@ -10,7 +10,8 @@ from orchestra import Assignment, LLMError, Orchestrator, OrchestratorReport, Su
 
 from gnnresearch.coder import CoderAgent
 from gnnresearch.experimenter import ExperimenterAgent
-from gnnresearch.workspace import load_workspace, next_role
+from gnnresearch.linter import LintAgent
+from gnnresearch.workspace import load_workspace, mark_coder_outcome, next_role, record_lint
 
 DEFAULT_GOAL = (
     "Improve the GNN's cross-site ASD vs control AUC on ABIDE by editing training "
@@ -20,19 +21,20 @@ DEFAULT_GOAL = (
 
 MISSION = """\
 You coordinate a GNN research loop whose only job is a better, honest classifier. \
-Sequence is write code → run a trial → write an insight → write the next change. \
-Never run the coder and experimenter in the same round. Never treat a screen PASS \
-as a better model. Never use best-epoch scores (that leak once inflated LOSO by ~0.07 AUC).
+Sequence is write code → lint → run a trial → write an insight → write the next change. \
+Never train until lint PASS. Never run coder and experimenter in the same round. \
+Never treat a screen PASS as a better model. Never use best-epoch scores \
+(that leak once inflated LOSO by ~0.07 AUC).
 """
 
 PLANNER_INSTRUCTIONS = """\
 You are the lead of a GNN experiment loop. You do not edit code or train yourself.
 
 The loop is sequential. First assignment this round must be a SINGLE subagent:
-- If no untested code change exists, dispatch coder.
-- If a change is waiting to be measured (or to be promoted to the next stage), \
-dispatch experimenter.
-Never dispatch both in one plan.
+- If the coder has not finished a clean edit, dispatch coder.
+- If an edit is waiting to be linted, dispatch linter.
+- If lint passed and a stage is waiting, dispatch experimenter.
+Never dispatch more than one.
 
 When briefing the coder, demand ONE tiny mechanism (a few lines). Do not ask \
 for DANN, multi-file rewrites, or new training flags on the first turn. The \
@@ -47,7 +49,7 @@ Respond with ONLY a JSON object (no prose, no code fence):
   "reasoning": "one or two sentences",
   "assignments": [
     {{
-      "subagent": "coder|experimenter",
+      "subagent": "coder|linter|experimenter",
       "objective": "<self-contained task>",
       "output_format": "<what the worker should return>"
     }}
@@ -58,7 +60,10 @@ Respond with ONLY a JSON object (no prose, no code fence):
 EVALUATOR_INSTRUCTIONS = """\
 You inspect findings and decide the next SINGLE step of the loop.
 
-- After coder: always spawn experimenter to measure the change.
+- After coder FAIL: spawn coder again. Do not lint or train a partial edit.
+- After coder PASS: spawn linter. Do not train yet.
+- After lint FAIL: spawn coder with the lint errors.
+- After lint PASS: spawn experimenter.
 - After experimenter, if the same code still needs loso-subset or loso-full: \
 spawn experimenter again.
 - After experimenter FAIL (or a completed stage that needs a new idea): spawn \
@@ -76,7 +81,7 @@ Respond with ONLY a JSON object (no prose, no code fence):
   "reasoning": "brief justification",
   "follow_up": [
     {{
-      "subagent": "coder|experimenter",
+      "subagent": "coder|linter|experimenter",
       "objective": "<specific next task, including insight when routing to coder>",
       "output_format": "<what the worker should return>"
     }}
@@ -124,6 +129,19 @@ def _coder_assignment(goal: str, proposed: Assignment | None = None) -> Assignme
     )
 
 
+def _linter_assignment(proposed: Assignment | None = None) -> Assignment:
+    objective = (
+        proposed.objective
+        if proposed and proposed.subagent == "linter"
+        else "Lint the pending coder edit. Call lint_changed_files. The tool decides PASS/FAIL."
+    )
+    return Assignment(
+        "linter",
+        objective,
+        "Return the lint report unchanged: passed, errors, files_checked.",
+    )
+
+
 def _experimenter_assignment(proposed: Assignment | None = None) -> Assignment:
     objective = (
         proposed.objective
@@ -150,6 +168,8 @@ def _forced_assignment(proposed: Assignment | None = None, goal: str = "") -> As
         return None
     if role == "experimenter":
         return _experimenter_assignment(proposed)
+    if role == "linter":
+        return _linter_assignment(proposed)
     return _coder_assignment(goal, proposed)
 
 
@@ -167,13 +187,13 @@ class GNNLead(Orchestrator):
         **kwargs: Any,
     ):
         if subagents is None:
-            subagents = [CoderAgent, ExperimenterAgent]
+            subagents = [CoderAgent, LintAgent, ExperimenterAgent]
         kwargs.setdefault("preamble", MISSION)
         kwargs.setdefault("planner_instructions", PLANNER_INSTRUCTIONS)
         kwargs.setdefault("evaluator_instructions", EVALUATOR_INSTRUCTIONS)
         kwargs.setdefault("synthesizer_instructions", SYNTHESIZER_INSTRUCTIONS)
         kwargs.setdefault("citation_instructions", CITATION_INSTRUCTIONS)
-        kwargs.setdefault("max_rounds", 8)
+        kwargs.setdefault("max_rounds", 10)
         kwargs.setdefault("max_parallel", 1)
         kwargs.setdefault("add_citations", False)
         if subagent_kwargs is None:
@@ -197,6 +217,21 @@ class GNNLead(Orchestrator):
         return complexity, [forced]
 
     def _evaluate(self, goal: str, results: list[SubAgentResult]) -> list[Assignment]:
+        last = results[-1] if results else None
+        if last is not None and last.subagent == "coder":
+            mark_coder_outcome(last.ok, last.error or "")
+        if last is not None and last.subagent == "linter":
+            workspace = load_workspace()
+            if not last.ok or workspace.get("lint_ok") is not True:
+                record_lint(
+                    {
+                        "passed": False,
+                        "errors": [
+                            last.error
+                            or "linter finished without a passing lint_changed_files result"
+                        ],
+                    }
+                )
         if next_role() is None:
             return []
         follow_up = super()._evaluate(goal, results)
@@ -216,7 +251,7 @@ def main() -> None:
     )
     parser.add_argument("goal", nargs="*", help="Research goal; omit for the default.")
     parser.add_argument("--lead-model", default=None, help="Model for the lead.")
-    parser.add_argument("--max-rounds", type=int, default=8, help="Max write/run rounds.")
+    parser.add_argument("--max-rounds", type=int, default=10, help="Max write/lint/run rounds.")
     parser.add_argument("--no-push", action="store_true", help="Do not git push on loso-full PASS.")
     parser.add_argument("--no-promote", action="store_true", help="Do not open a review branch.")
     parser.add_argument("--quiet", action="store_true")

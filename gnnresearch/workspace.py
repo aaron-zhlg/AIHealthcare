@@ -10,6 +10,8 @@ from gnnresearch.paths import workspace_path
 
 STATUSES = (
     "idle",
+    "coder_failed",
+    "lint_failed",
     "needs_screen",
     "needs_loso_subset",
     "needs_loso_full",
@@ -39,6 +41,10 @@ def default_workspace() -> dict[str, Any]:
         "files_changed": [],
         "last_results": {},
         "last_insight": None,
+        "coder_ok": None,
+        "coder_error": "",
+        "lint_ok": None,
+        "lint_report": None,
         "history": [],
     }
 
@@ -75,7 +81,7 @@ def note_code_change(path: str, hypothesis: str = "") -> dict[str, Any]:
     """Record a coder edit. Starts a new iteration unless one is already open."""
     data = load_workspace()
     status = data.get("status") or "idle"
-    opening = status in {"idle", "awaiting_new_code", "promoted"}
+    opening = status in {"idle", "awaiting_new_code", "promoted", "lint_failed", "coder_failed"}
     if opening:
         data["iteration"] = int(data.get("iteration") or 0) + 1
         data["last_results"] = {}
@@ -90,6 +96,55 @@ def note_code_change(path: str, hypothesis: str = "") -> dict[str, Any]:
     if path not in data["files_changed"]:
         data["files_changed"].append(path)
     data["status"] = "needs_screen"
+    data["coder_ok"] = False
+    data["lint_ok"] = False
+    data["lint_report"] = None
+    save_workspace(data)
+    return data
+
+
+def mark_coder_outcome(ok: bool, error: str = "") -> dict[str, Any]:
+    """Record whether the coder instance finished. Failures must not be measured."""
+    data = load_workspace()
+    data["coder_ok"] = bool(ok)
+    data["coder_error"] = error
+    if not ok:
+        data["status"] = "coder_failed"
+    elif data.get("status") == "coder_failed" and data.get("files_changed"):
+        data["status"] = "needs_screen"
+    save_workspace(data)
+    return data
+
+
+def coder_finished_cleanly(workspace: dict[str, Any] | None = None) -> bool:
+    data = workspace if workspace is not None else load_workspace()
+    return data.get("coder_ok") is True
+
+
+def lint_passed(workspace: dict[str, Any] | None = None) -> bool:
+    data = workspace if workspace is not None else load_workspace()
+    return data.get("lint_ok") is True
+
+
+def record_lint(report: dict[str, Any]) -> dict[str, Any]:
+    """Store the linter verdict. FAIL sends the loop back to the coder."""
+    data = load_workspace()
+    passed = bool(report.get("passed"))
+    data["lint_ok"] = passed
+    data["lint_report"] = report
+    if passed:
+        if data.get("files_changed") and data.get("coder_ok"):
+            data["status"] = "needs_screen"
+    else:
+        data["status"] = "lint_failed"
+        data["last_insight"] = {
+            "source": "linter",
+            "passed": False,
+            "errors": report.get("errors") or [],
+            "next_code_change": "fix the lint errors, then stop. Do not start a new mechanism.",
+            "narrative": "Lint FAIL. Code is not qualified to train.\n"
+            + "\n".join(str(item) for item in (report.get("errors") or [])),
+        }
     save_workspace(data)
     return data
 
@@ -127,13 +182,18 @@ def apply_trial_outcome(
 
 def next_role(workspace: dict[str, Any] | None = None) -> str | None:
     """Who must run next. ``None`` means the loop is done (loso-full PASS)."""
-    status = str(
-        (workspace if workspace is not None else load_workspace()).get("status") or "idle"
-    )
-    if status in STAGE_FOR_STATUS:
-        return "experimenter"
+    data = workspace if workspace is not None else load_workspace()
+    status = str(data.get("status") or "idle")
     if status == "promoted":
         return None
+    if status == "coder_failed" or data.get("coder_ok") is False:
+        return "coder"
+    if status == "lint_failed":
+        return "coder"
+    if data.get("coder_ok") is True and data.get("lint_ok") is not True:
+        return "linter"
+    if status in STAGE_FOR_STATUS and data.get("lint_ok") is True:
+        return "experimenter"
     return "coder"
 
 

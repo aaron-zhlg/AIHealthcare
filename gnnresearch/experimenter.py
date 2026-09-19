@@ -15,6 +15,8 @@ from gnnresearch.promote import promote
 from gnnresearch.protocol import protocol_notes, protocol_ok
 from gnnresearch.workspace import (
     apply_trial_outcome,
+    coder_finished_cleanly,
+    lint_passed,
     load_workspace,
     required_stage,
     save_insight,
@@ -138,6 +140,25 @@ class ExperimenterTools:
             note: Optional extra note stored on the result (defaults to hypothesis).
         """
         workspace = load_workspace()
+        if not coder_finished_cleanly(workspace):
+            return {
+                "ok": False,
+                "error": (
+                    "coder did not finish cleanly; refusing to train a partial edit. "
+                    f"coder_ok={workspace.get('coder_ok')!r} "
+                    f"error={workspace.get('coder_error') or 'unfinished tool loop'}"
+                ),
+                "workspace": workspace,
+            }
+        if not lint_passed(workspace):
+            return {
+                "ok": False,
+                "error": (
+                    "lint has not passed; code is not qualified to train. "
+                    f"lint_ok={workspace.get('lint_ok')!r}"
+                ),
+                "workspace": workspace,
+            }
         stage = required_stage(workspace)
         if stage is None:
             return {

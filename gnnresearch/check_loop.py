@@ -21,13 +21,15 @@ os.environ["GNNRESEARCH_WRITE_DIR"] = str(_TMP)
 
 from gnnresearch.coder import CodeTools  # noqa: E402
 from gnnresearch.experimenter import ExperimenterTools, measurement_coverage  # noqa: E402
+from gnnresearch.linter import lint_paths  # noqa: E402
 from gnnresearch.orchestrator import _forced_assignment  # noqa: E402
 from gnnresearch.protocol import leak_reasons_in_source, protocol_ok  # noqa: E402
 from gnnresearch.workspace import (  # noqa: E402
     apply_trial_outcome,
     load_workspace,
+    mark_coder_outcome,
     next_role,
-    note_code_change,
+    record_lint,
     save_insight,
 )
 
@@ -76,8 +78,24 @@ def test_write_then_measure() -> None:
     workspace = load_workspace()
     _check("write opens needs_screen", workspace["status"] == "needs_screen", workspace["status"])
     _check("write records file", bool(workspace["files_changed"]), str(workspace["files_changed"]))
-    _check("after write, experimenter is next", next_role() == "experimenter")
+    _check("unfinished coder is still next", next_role() == "coder")
     _check("write reports iteration 1", result["iteration"] == 1)
+    mark_coder_outcome(True)
+    _check("after clean coder, linter is next", next_role() == "linter")
+    record_lint({"passed": True, "errors": [], "files_checked": workspace["files_changed"]})
+    _check("after lint PASS, experimenter is next", next_role() == "experimenter")
+    _check("lint+coder allow a trial attempt", required_stage_ok())
+
+
+def required_stage_ok() -> bool:
+    from gnnresearch.workspace import coder_finished_cleanly, lint_passed, required_stage
+
+    workspace = load_workspace()
+    return (
+        coder_finished_cleanly(workspace)
+        and lint_passed(workspace)
+        and required_stage(workspace) == "screen"
+    )
 
 
 def test_idle_trial_refused() -> None:
@@ -101,6 +119,8 @@ def test_fail_insight_then_coder() -> None:
     writer.read_last_insight()
     writer.record_hypothesis("tiny dropout tweak")
     _write_scratch(writer, "model.py", "dropout = 0.4\n")
+    mark_coder_outcome(True)
+    record_lint({"passed": True, "errors": []})
 
     apply_trial_outcome(
         "screen",
@@ -151,6 +171,8 @@ def test_promotion_freezes_code() -> None:
     tools = CodeTools()
     tools.read_last_insight()
     _write_scratch(tools, "gcn_edit.py", "hidden = 64\n")
+    mark_coder_outcome(True)
+    record_lint({"passed": True, "errors": []})
     name = load_workspace()["current_name"]
     apply_trial_outcome("screen", name, _fake_verdict("screen", True, 0.64), {"auc_mean": 0.64}, False)
     _check("screen PASS → loso-subset", load_workspace()["status"] == "needs_loso_subset")
@@ -200,6 +222,30 @@ def test_protocol_and_coverage() -> None:
     )
 
 
+def test_coder_fail_and_lint_block_training() -> None:
+    print("unqualified code cannot train")
+    from gnnresearch.workspace import default_workspace, save_workspace
+
+    save_workspace(default_workspace())
+    tools = CodeTools()
+    tools.read_last_insight()
+    _write_scratch(tools, "broken.py", "def (\n")
+    mark_coder_outcome(False, "tool loop did not settle within 16 rounds")
+    _check("coder FAIL next is coder", next_role() == "coder")
+    refused = ExperimenterTools(promote_on_pass=False, push=False).run_trial()
+    _check("coder FAIL blocks trial", refused.get("ok") is False and "coder" in refused["error"])
+
+    mark_coder_outcome(True)
+    _check("clean coder without lint → linter", next_role() == "linter")
+    report = lint_paths(load_workspace()["files_changed"])
+    _check("syntax error fails lint", report["passed"] is False, str(report["errors"]))
+    record_lint(report)
+    _check("lint FAIL next is coder", next_role() == "coder")
+    refused_lint = ExperimenterTools(promote_on_pass=False, push=False).run_trial()
+    _check("lint FAIL blocks trial", refused_lint.get("ok") is False and "lint" in refused_lint["error"])
+    _check("lint insight is waiting for coder", "Lint FAIL" in str(load_workspace()["last_insight"]))
+
+
 def test_coder_cannot_write_gates() -> None:
     print("path guards")
     tools = CodeTools()
@@ -220,6 +266,7 @@ def main() -> None:
         test_fail_insight_then_coder,
         test_promotion_freezes_code,
         test_protocol_and_coverage,
+        test_coder_fail_and_lint_block_training,
         test_coder_cannot_write_gates,
     ]
     for test in tests:

@@ -94,9 +94,11 @@ trial, runs it on a throwaway branch, and the branch survives only if it clears 
 See [autoresearch/README.md](autoresearch/README.md) for the workflow and
 [autoresearch/program.md](autoresearch/program.md) for the agent's rules.
 
-A two-agent loop can drive that search: a **coder** edits training/model code,
-an **experimenter** runs a gated trial and writes an insight, then a fresh coder
-reads that insight and makes the next one-thing change.
+A three-agent loop can drive that search: a **coder** edits training/model code,
+a **linter** checks that the edit is qualified (syntax, scored path, no
+best-epoch leak), then an **experimenter** runs a gated trial and writes an
+insight. A fresh coder reads that insight and makes the next one-thing change.
+Unfinished or lint-failing edits are not trained.
 
 ```bash
 uv run python -m gnnresearch.check_loop   # no LLM, no training; tests the loop
