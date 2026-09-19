@@ -66,18 +66,26 @@ enough that there is no excuse for skipping a stage.
 ## 4. Branch policy
 
 ```
-main                            stable code + published results
-experiment/autoresearch         this framework
-experiment/trial-<slug>         one trial (created and destroyed by run_trial.sh)
+main                            stable code + published results + this framework
+experiment/trial-<slug>         one trial, opened for review after a win
 ```
 
-`run_trial.sh` implements the policy:
+The framework lives on `main` under `autoresearch/` (including the multi-agent
+`loop/`). Do not treat `experiment/autoresearch` as the current home.
+
+`run_trial.sh` implements the single-trial policy:
 
 1. Require a clean working tree.
-2. Branch from `main`: `experiment/trial-<slug>`.
+2. Branch from the current HEAD (usually `main`): `experiment/trial-<slug>`.
 3. Apply the change, run the trial.
-4. **PASS** → commit code + `result.json`, push the branch, report it for review.
-5. **FAIL** → record in the ledger, return to `main`, delete the branch.
+4. **PASS** → commit code + `result.json`, push the branch, open a review PR
+   whose description starts with the scores.
+5. **FAIL** → record in the ledger, return to the starting branch, delete the
+   trial branch.
+
+The unbounded agent loop (`python -m autoresearch.loop`) follows the same
+promotion rule: only a protocol-clean `loso-full` PASS opens that PR. It never
+merges to `main` or edits `gates.json`.
 
 Failed trials leave no remote branch, but they are never lost: every run appends to
 `outputs/autoresearch/ledger.jsonl`, which is gitignored and therefore survives branch
@@ -150,6 +158,10 @@ uv run python -m autoresearch.trial --name dropout03 --stage screen --dropout 0.
 
 # Review history
 cat outputs/autoresearch/ledger.jsonl | jq -r '[.name,.stage,.summary.auc_mean,.verdict.passed] | @tsv'
+
+# Multi-agent write → lint → trial loop (needs an LLM key)
+uv run python -m autoresearch.loop.check_loop
+uv run python -m autoresearch.loop
 ```
 
 ---

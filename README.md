@@ -78,75 +78,31 @@ Full reports: [baseline](experiments/baseline_gcn_v1/README.md) ·
 
 ## Automated Experiments
 
-`autoresearch/` is both the lab and the PI. `trial.py` + `gates.json` run one
-honest trial. `loop/` is the multi-agent driver that keeps proposing one code
-change, linting it, measuring it, and iterating.
+`autoresearch/` is the lab and the PI. `trial.py` + `gates.json` run one honest
+trial (final-epoch AUC only). `loop/` is the multi-agent driver: coder → linter
+→ experimenter, one worker at a time, memory in
+`outputs/autoresearch/loop/workspace.json`.
 
-### Gates (`autoresearch/`)
+| Stage | Evaluation | Gate |
+|-------|------------|------|
+| `screen` | Random 80/20 × 3 seeds | AUC ≥ 0.63 |
+| `loso-subset` | LOSO, 5 largest sites | AUC ≥ 0.67 |
+| `loso-full` | LOSO, all 20 sites | AUC ≥ 0.66 |
 
-Each trial trains the current code and scores **final-epoch** AUC. Best-epoch
-numbers are diagnostic only — selecting on the evaluation set is the leak that
-once reported LOSO 0.707 instead of 0.623.
+A `screen` PASS is only a filter. Only a `loso-full` PASS opens a review PR
+(scores first in the description). Nothing merges to `main` or raises
+`gates.json` by itself.
 
 ```bash
 ./autoresearch/run_trial.sh --name dropout03 --note "less regularization" -- --dropout 0.3
-```
-
-| Stage | Evaluation | Cost | Gate |
-|-------|------------|------|------|
-| `screen` | Random 80/20 × 3 seeds | ~1 min | AUC ≥ 0.63 |
-| `loso-subset` | LOSO, 5 largest sites | ~2 min | AUC ≥ 0.67 |
-| `loso-full` | LOSO, all 20 sites | ~6 min | AUC ≥ 0.66 |
-
-A `screen` PASS is only a filter. Only `loso-full` PASS may open
-`experiment/trial-<slug>` for review. Nothing merges to `main` or raises
-`gates.json` by itself.
-
-See [autoresearch/README.md](autoresearch/README.md) and
-[autoresearch/program.md](autoresearch/program.md).
-
-### Multi-agent loop (`autoresearch/loop/`)
-
-Built on [orchestra](https://github.com/aaron-zhlg/orchestra). A lead
-orchestrator dispatches **one** worker at a time. Each worker is a **new
-instance** with an empty context window. Cross-round memory is
-`outputs/autoresearch/loop/workspace.json` (insight, files, lint verdict, stage),
-not chat history.
-
-```text
-idle
-  → coder writes one mechanism
-  → if the coder's tool loop fails: do not train; coder again
-  → linter (syntax, import of the scored path, no best-epoch leak,
-    change actually visible to autoresearch/trial.py)
-  → if lint FAIL: coder again, with the lint report as insight
-  → experimenter runs the required stage via trial.py
-  → screen FAIL  → coder (new idea)
-  → screen PASS  → same code, loso-subset
-  → subset PASS  → same code, loso-full
-  → full PASS    → promote a review branch; loop stops
-```
-
-The experimenter scores `autoresearch/trial.py` (`run_fold`), which imports
-`SimpleGCN` and `train_one_epoch`. Edits that only touch `train.py` /
-`loso_cv.py` are treated as unqualified: the trial would not measure them.
-
-```bash
-export DEEPSEEK_API_KEY=...   # or OPENAI_API_KEY
 uv run python -m autoresearch.loop.check_loop          # no LLM, no training
 uv run python -m autoresearch.loop                     # until loso-full PASS or Ctrl-C
-uv run python -m autoresearch.loop --max-rounds 2      # local smoke: stop after 2 rounds
-uv run python -m autoresearch.loop --fresh             # wipe workspace and restart
+uv run python -m autoresearch.loop --max-rounds 2      # local smoke
 ```
 
-Omit `--max-rounds` (or pass `0`) for the unbounded loop. It stops on a
-`loso-full` PASS or Ctrl-C (which still writes a session report). Restarting
-the same command continues from `workspace.json`. Each round still costs an
-LLM call and, after lint PASS, a real training job.
-
-A passing `loso-full` commits only the training/eval diff plus frozen
-`experiments/<name>_v1/` onto `experiment/trial-<slug>` and opens a review
-PR whose description starts with the scores. It does not merge to `main`.
+Roles, workspace, promotion, and the leak that once reported LOSO 0.707 instead
+of 0.623: [autoresearch/README.md](autoresearch/README.md). Agent rules:
+[program.md](autoresearch/program.md).
 
 ---
 
