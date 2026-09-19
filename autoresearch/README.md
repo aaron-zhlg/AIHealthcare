@@ -1,6 +1,6 @@
 # Autoresearch
 
-An automated experiment loop for the AIHealthcare GCN pipeline. An AI agent proposes a
+An automated experiment loop for the neuroasd GCN pipeline. An AI agent proposes a
 change, runs it on a throwaway branch, and the branch survives only if the result beats
 a predefined gate.
 

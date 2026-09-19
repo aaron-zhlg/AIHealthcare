@@ -1,4 +1,4 @@
-# AIHealthcare
+# neuroasd
 
 AI-driven brain network analysis for autism research using the ABIDE dataset. This project builds a pipeline from resting-state fMRI ROI time series to graph neural network (GNN) classification, interpretability, literature grounding, and in-silico intervention.
 
@@ -112,7 +112,7 @@ See [data/abide/processed/README.md](data/abide/processed/README.md) for field d
 ## Project Structure
 
 ```text
-AIHealthcare/
+neuroasd/
 ├── README.md                          ← this file
 ├── pyproject.toml / uv.lock           ← uv environment (Python 3.12, numpy)
 ├── data/abide/
@@ -124,7 +124,7 @@ AIHealthcare/
 │       ├── download_abide_preproc.py  ← download ROI time series from S3
 │       ├── build_aligned_dataset.py   ← align CSV + .1D, compute FC
 │       └── download_func_minimal.py   ← optional 4D fMRI download (~220 GB)
-├── aihealthcare/                     ← GCN model, train, eval, loso_cv, explain
+├── neuroasd/                     ← GCN model, train, eval, loso_cv, explain
 ├── autoresearch/                     ← automated gated experiment loop
 ├── experiments/
 │   ├── baseline_gcn_v1/              ← frozen baseline config + results

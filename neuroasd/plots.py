@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyBboxPatch, Wedge
 
-from aihealthcare.roi_atlas import NETWORK_ABBR, NETWORK_COLORS, sort_order
+from neuroasd.roi_atlas import NETWORK_ABBR, NETWORK_COLORS, sort_order
 
 
 def plot_top_rois(

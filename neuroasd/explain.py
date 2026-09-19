@@ -2,7 +2,7 @@
 
 Any branch that trains a `SimpleGCN` can point this at its checkpoint:
 
-    uv run python -m aihealthcare.explain \\
+    uv run python -m neuroasd.explain \\
         --checkpoint outputs/gcn_baseline/final_model.pt \\
         --output-dir experiments/baseline_gcn_v1/figures
 
@@ -22,12 +22,12 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from aihealthcare.eval import load_model
-from aihealthcare.fc_dataset import AbideFCDataset, collate_graphs
-from aihealthcare.gcn import SimpleGCN
-from aihealthcare.plots import plot_chord, plot_top_rois
-from aihealthcare.roi_atlas import roi_table
-from aihealthcare.train import pick_device
+from neuroasd.eval import load_model
+from neuroasd.fc_dataset import AbideFCDataset, collate_graphs
+from neuroasd.gcn import SimpleGCN
+from neuroasd.plots import plot_chord, plot_top_rois
+from neuroasd.roi_atlas import roi_table
+from neuroasd.train import pick_device
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "abide"
 ASD_CLASS = 0

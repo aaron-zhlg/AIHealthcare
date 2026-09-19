@@ -14,8 +14,8 @@ from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import DataLoader, Subset
 
-from aihealthcare.fc_dataset import AbideFCDataset, collate_graphs
-from aihealthcare.gcn import SimpleGCN
+from neuroasd.fc_dataset import AbideFCDataset, collate_graphs
+from neuroasd.gcn import SimpleGCN
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "abide"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[1] / "outputs" / "gcn_baseline"

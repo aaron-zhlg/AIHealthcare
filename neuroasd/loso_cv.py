@@ -14,9 +14,9 @@ import torch.nn as nn
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from torch.utils.data import DataLoader, Subset
 
-from aihealthcare.fc_dataset import AbideFCDataset, collate_graphs
-from aihealthcare.gcn import SimpleGCN
-from aihealthcare.train import TrainLogger, evaluate, pick_device, train_one_epoch
+from neuroasd.fc_dataset import AbideFCDataset, collate_graphs
+from neuroasd.gcn import SimpleGCN
+from neuroasd.train import TrainLogger, evaluate, pick_device, train_one_epoch
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "abide"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[1] / "outputs" / "loso_cv_gcn_v1"

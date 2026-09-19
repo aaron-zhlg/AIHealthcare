@@ -99,7 +99,7 @@ Hyperparameters exposed by `trial.py` (no code change needed):
 | `--dropout` | 0.5 | 0.2–0.7 |
 | `--weight-decay` | 1e-4 | 1e-5 – 1e-2 |
 
-Structural changes require editing `aihealthcare/gcn.py` on the trial branch. `trial.py`
+Structural changes require editing `neuroasd/gcn.py` on the trial branch. `trial.py`
 imports whatever `SimpleGCN` the branch defines, so no framework change is needed.
 
 Ideas worth testing, roughly in order of expected value:

@@ -13,9 +13,9 @@ import torch
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score, roc_auc_score
 from torch.utils.data import DataLoader, Subset
 
-from aihealthcare.fc_dataset import AbideFCDataset, collate_graphs
-from aihealthcare.gcn import SimpleGCN
-from aihealthcare.train import TrainLogger, evaluate, pick_device
+from neuroasd.fc_dataset import AbideFCDataset, collate_graphs
+from neuroasd.gcn import SimpleGCN
+from neuroasd.train import TrainLogger, evaluate, pick_device
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "abide"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[1] / "outputs" / "gcn_baseline"

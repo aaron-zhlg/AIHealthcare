@@ -1,3 +1,3 @@
-"""Automated experiment loop for the AIHealthcare GCN pipeline."""
+"""Automated experiment loop for the neuroasd GCN pipeline."""
 
 __all__ = ["trial"]

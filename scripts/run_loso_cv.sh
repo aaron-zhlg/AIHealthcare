@@ -21,9 +21,9 @@ done
 
 echo "==> Running LOSO-CV (GCN)"
 if ((${#PASSTHROUGH[@]} > 0)); then
-  uv run python -m aihealthcare.loso_cv "${PASSTHROUGH[@]}"
+  uv run python -m neuroasd.loso_cv "${PASSTHROUGH[@]}"
 else
-  uv run python -m aihealthcare.loso_cv
+  uv run python -m neuroasd.loso_cv
 fi
 
 echo "==> Done"

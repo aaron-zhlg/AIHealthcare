@@ -28,9 +28,9 @@ import torch.nn as nn
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import DataLoader, Subset
 
-from aihealthcare.fc_dataset import AbideFCDataset, collate_graphs
-from aihealthcare.gcn import SimpleGCN
-from aihealthcare.train import evaluate, pick_device, train_one_epoch
+from neuroasd.fc_dataset import AbideFCDataset, collate_graphs
+from neuroasd.gcn import SimpleGCN
+from neuroasd.train import evaluate, pick_device, train_one_epoch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = REPO_ROOT / "data" / "abide"

@@ -10,7 +10,7 @@
 #   ./scripts/run_explain.sh --loso-folds-dir outputs/loso_cv_gcn_v1/folds \
 #       --output-dir experiments/loso_cv_gcn_v1/figures
 #
-# Any extra flags are forwarded to `python -m aihealthcare.explain`.
+# Any extra flags are forwarded to `python -m neuroasd.explain`.
 
 set -euo pipefail
 
@@ -25,9 +25,9 @@ done
 
 echo "==> Explaining GCN"
 if ((${#PASSTHROUGH[@]} > 0)); then
-  uv run python -m aihealthcare.explain "${PASSTHROUGH[@]}"
+  uv run python -m neuroasd.explain "${PASSTHROUGH[@]}"
 else
-  uv run python -m aihealthcare.explain \
+  uv run python -m neuroasd.explain \
     --checkpoint outputs/gcn_baseline/final_model.pt \
     --output-dir experiments/baseline_gcn_v1/figures
 fi
