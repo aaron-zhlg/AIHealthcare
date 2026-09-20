@@ -22,6 +22,33 @@ def fisher_z_transform(fc_values: torch.Tensor) -> torch.Tensor:
     return torch.atanh(fc_values.clamp(-FISHER_CLIP, FISHER_CLIP))
 
 
+def quantile_normalize_edges(
+    adjacency: torch.Tensor,
+    site_ids: list[str],
+    tables: dict[str, tuple[torch.Tensor, torch.Tensor]],
+    pooled_table: tuple[torch.Tensor, torch.Tensor],
+) -> torch.Tensor:
+    """Per-site rank/quantile normalization of the Fisher-z |FC| edge weights.
+
+    `tables[site] = (source, target)` are quantile grids fit on training-fold
+    edges of that site only. Each edge weight is mapped through its site's grid
+    onto the common target grid, so site-specific edge scale/outliers are
+    removed while the within-site ordering of edges (the signal) is preserved
+    because the map is monotone. Sites unseen in training use `pooled_table`.
+    """
+    weights = fisher_z_transform(adjacency)
+    mapped = weights.clone()
+    for site in dict.fromkeys(site_ids):
+        source, target = tables.get(site, pooled_table)
+        mask = torch.tensor([value == site for value in site_ids], device=weights.device)
+        values = weights[mask].contiguous()
+        index = torch.searchsorted(source, values).clamp(1, source.numel() - 1)
+        low, high = source[index - 1], source[index]
+        frac = ((values - low) / (high - low).clamp(min=1e-6)).clamp(0.0, 1.0)
+        mapped[mask] = target[index - 1] + frac * (target[index] - target[index - 1])
+    return mapped
+
+
 def normalize_adjacency(adjacency: torch.Tensor) -> torch.Tensor:
     """Symmetric normalization with self-loops. Input shape: (B, N, N)."""
     adj = adjacency.clone()
