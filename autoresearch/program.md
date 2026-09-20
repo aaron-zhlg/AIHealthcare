@@ -20,11 +20,11 @@ Published results, corrected on 2026-08-27 to report the final epoch:
 Gates are set against this framework's own measurements of the same default config,
 which use identical protocol and are therefore the fair comparison:
 
-| Stage | Measured baseline AUC |
-|-------|----------------------|
-| `screen` | 0.628 ± 0.036 (3 seeds, so below the single-seed 0.677) |
-| `loso-subset` | 0.659 ± 0.071 |
-| `loso-full` | 0.631 ± 0.108 |
+| Stage | Measured baseline AUC | Current SOTA (iter6 Fisher-z) |
+|-------|----------------------|-------------------------------|
+| `screen` | 0.628 ± 0.036 (3 seeds, so below the single-seed 0.677) | 0.673 |
+| `loso-subset` | 0.659 ± 0.071 | 0.753 |
+| `loso-full` | 0.631 ± 0.108 | 0.690 (accuracy 0.644) |
 
 Full numbers live in `autoresearch/gates.json`.
 
@@ -54,9 +54,9 @@ Trials are cheap-to-expensive. Do not skip ahead.
 
 | Stage | What it runs | Cost | Gate |
 |-------|--------------|------|------|
-| `screen` | Random 80/20 split × 3 seeds | ~1 min | mean AUC ≥ 0.64 |
-| `loso-subset` | LOSO on NYU, UM_1, USM, UCLA_1, YALE | ~2 min | mean AUC ≥ 0.67 |
-| `loso-full` | LOSO on all 20 sites | ~6 min | mean AUC ≥ 0.66 |
+| `screen` | Random 80/20 split × 3 seeds | ~1 min | mean AUC ≥ 0.66 |
+| `loso-subset` | LOSO on NYU, UM_1, USM, UCLA_1, YALE | ~2 min | mean AUC ≥ 0.72 |
+| `loso-full` | LOSO on all 20 sites | ~6 min | mean AUC ≥ 0.6895 |
 
 Thresholds live in `autoresearch/gates.json`. `trial.py` exits `0` on PASS and `3` on
 FAIL, so `run_trial.sh` can branch on the result.

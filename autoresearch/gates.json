@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-08-27",
+  "updated_at": "2026-09-20",
   "published_reference": {
     "note": "Corrected on 2026-08-27 to final-epoch metrics, so these now use the same protocol as the trials and are directly comparable. Earlier revisions reported 0.688 and 0.707 via best-epoch selection on the evaluation set.",
     "baseline_gcn_v1": {
@@ -28,21 +28,29 @@
     "loso-subset": { "auc_mean": 0.6595, "auc_std": 0.0713, "runtime_min": 1.7 },
     "loso-full": { "auc_mean": 0.6305, "auc_std": 0.1078, "runtime_min": 6.1 }
   },
+  "current_sota": {
+    "note": "Gates were raised on 2026-09-20 to the Fisher-z incumbent (iter6). Later trials must beat this, not the original 0.63 LOSO baseline. Loop stop remains loso-full accuracy_mean >= 0.80.",
+    "name": "iter6_fisher-z-transform-arctanh-with-",
+    "review_pr": "https://github.com/aaron-zhlg/neuroasd/pull/4",
+    "loso-full": { "auc_mean": 0.6895, "accuracy_mean": 0.6437 },
+    "loso-subset": { "auc_mean": 0.7534 },
+    "screen": { "auc_mean": 0.6731 }
+  },
   "gates": {
     "screen": {
       "metric": "auc_mean",
-      "threshold": 0.64,
-      "rationale": "Above the measured 3-seed baseline (0.628, std 0.036). 0.63 let noise through (DropEdge 0.6315 then failed loso-subset); 0.64 is a slightly stricter cheap filter."
+      "threshold": 0.66,
+      "rationale": "Raised from 0.64 after iter6. Must clear the Fisher-z screen (0.673) within cheap-stage noise rather than the original 3-seed baseline (0.628). 0.66 still sits below typical current screens (~0.67) so it stays a filter, not the destination."
     },
     "loso-subset": {
       "metric": "auc_mean",
-      "threshold": 0.67,
-      "rationale": "Just above the measured subset baseline (0.659), so a candidate must show a real cross-site gain, not seed noise, before the full sweep."
+      "threshold": 0.72,
+      "rationale": "Raised from 0.67 after iter6 (subset 0.753). The old 0.67 no longer filtered anything on the Fisher-z stack. 0.72 is above the original subset baseline (0.659) and below the incumbent subset, so a candidate must show a real cross-site gain before the full sweep."
     },
     "loso-full": {
       "metric": "auc_mean",
-      "threshold": 0.66,
-      "rationale": "About 0.03 above the measured full-LOSO baseline (0.631). Clearing this is the only thing that justifies a new experiments/ directory."
+      "threshold": 0.6895,
+      "rationale": "Raised from 0.66 to the iter6 Fisher-z incumbent (0.6895, accuracy 0.644). Clearing the original 0.63+0.03 bar is no longer enough to open a PR. Loop stop is still accuracy_mean >= 0.80; this gate is the new state of the art, not the clinical 80/80 bar."
     }
   }
 }

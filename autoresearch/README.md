@@ -63,9 +63,9 @@ gives the agent memory that is independent of git history.
 
 | Stage | Evaluation | Cost | Measured baseline | Gate |
 |-------|------------|------|-------------------|------|
-| `screen` | Random 80/20 split × 3 seeds | ~1 min | 0.628 | AUC ≥ 0.64 |
-| `loso-subset` | LOSO on the 5 largest sites | ~2 min | 0.659 | AUC ≥ 0.67 |
-| `loso-full` | LOSO on all 20 sites | ~6 min | 0.631 | AUC ≥ 0.66 |
+| `screen` | Random 80/20 split × 3 seeds | ~1 min | 0.628 | AUC ≥ 0.66 |
+| `loso-subset` | LOSO on the 5 largest sites | ~2 min | 0.659 | AUC ≥ 0.72 |
+| `loso-full` | LOSO on all 20 sites | ~6 min | 0.631 | AUC ≥ 0.6895 |
 
 Only a `loso-full` pass justifies a new directory under `experiments/`. A
 `screen` PASS is only a filter.

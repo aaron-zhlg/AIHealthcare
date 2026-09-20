@@ -85,9 +85,9 @@ trial (final-epoch AUC only). `loop/` is the multi-agent driver: coder → linte
 
 | Stage | Evaluation | Gate |
 |-------|------------|------|
-| `screen` | Random 80/20 × 3 seeds | AUC ≥ 0.64 |
-| `loso-subset` | LOSO, 5 largest sites | AUC ≥ 0.67 |
-| `loso-full` | LOSO, all 20 sites | AUC ≥ 0.66 |
+| `screen` | Random 80/20 × 3 seeds | AUC ≥ 0.66 |
+| `loso-subset` | LOSO, 5 largest sites | AUC ≥ 0.72 |
+| `loso-full` | LOSO, all 20 sites | AUC ≥ 0.6895 |
 
 A `screen` PASS is only a filter. A `loso-full` PASS opens a review PR
 (scores first) and becomes the new baseline; the loop keeps going until
