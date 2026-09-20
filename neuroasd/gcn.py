@@ -9,6 +9,51 @@ import torch.nn.functional as F
 
 FISHER_CLIP = 0.999
 
+# Weight of the site-alignment (CORAL) penalty added to the classification loss.
+SITE_ALIGN_LAMBDA = 0.1
+# Sites with fewer subjects than this are skipped: an unbiased covariance needs
+# at least two degrees of freedom to be meaningful.
+SITE_ALIGN_MIN_SUBJECTS = 3
+
+
+def site_coral_loss(embeddings: torch.Tensor, site_ids: list[str]) -> torch.Tensor:
+    """CORAL-style second-order site alignment on mean-pooled graph embeddings.
+
+    `embeddings` are the batch's graph vectors (one row per subject) and
+    `site_ids[i]` is subject i's SITE_ID. For each site present in the batch the
+    squared Frobenius distance between that site's unbiased covariance (1/(n-1))
+    and the batch-pooled covariance is averaged over sites and normalized by
+    4*d^2, so the penalty is scale-free in the embedding dimension. Sites with
+    fewer than SITE_ALIGN_MIN_SUBJECTS subjects (or a non-finite covariance) are
+    skipped; if no site qualifies the penalty is exactly zero.
+
+    Only subjects passed in by the caller are used, and in a LOSO fold that is
+    the training loader only, so the held-out site never contributes statistics.
+    """
+    if embeddings.shape[0] < SITE_ALIGN_MIN_SUBJECTS:
+        return embeddings.new_zeros(())
+
+    dim = embeddings.shape[1]
+    centered = embeddings - embeddings.mean(dim=0, keepdim=True)
+    pooled_cov = (centered.t() @ centered) / (embeddings.shape[0] - 1)
+
+    penalties = []
+    for site in dict.fromkeys(site_ids):
+        mask = torch.tensor([value == site for value in site_ids], device=embeddings.device)
+        site_emb = embeddings[mask]
+        count = site_emb.shape[0]
+        if count < SITE_ALIGN_MIN_SUBJECTS:
+            continue
+        site_centered = site_emb - site_emb.mean(dim=0, keepdim=True)
+        site_cov = (site_centered.t() @ site_centered) / (count - 1)
+        if not torch.isfinite(site_cov).all():
+            continue
+        penalties.append(((site_cov - pooled_cov) ** 2).sum())
+
+    if not penalties:
+        return embeddings.new_zeros(())
+    return torch.stack(penalties).mean() / (4.0 * dim * dim)
+
 
 def fisher_z_transform(fc_values: torch.Tensor) -> torch.Tensor:
     """Fisher z (arctanh) of FC correlation values, clipped so the result is finite.
@@ -100,7 +145,8 @@ class SimpleGCN(nn.Module):
         self.classifier = nn.Linear(hidden_dim, num_classes)
         self.dropout = dropout
 
-    def forward(self, node_features: torch.Tensor, adjacency: torch.Tensor) -> torch.Tensor:
+    def embed(self, node_features: torch.Tensor, adjacency: torch.Tensor) -> torch.Tensor:
+        """Mean-pooled graph embedding (the readout input), before the head."""
         # Fisher z on the raw FC correlation values before they are treated as
         # node features (single feature-distribution change; nothing rescaled or
         # harmonized per site).
@@ -116,5 +162,7 @@ class SimpleGCN(nn.Module):
         x = F.relu(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
 
-        graph_embedding = x.mean(dim=1)
-        return self.classifier(graph_embedding)
+        return x.mean(dim=1)
+
+    def forward(self, node_features: torch.Tensor, adjacency: torch.Tensor) -> torch.Tensor:
+        return self.classifier(self.embed(node_features, adjacency))
