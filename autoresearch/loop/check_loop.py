@@ -348,6 +348,22 @@ def test_pr_body_leads_with_scores() -> None:
     _check("best-epoch marked diagnostic", "not a result" in body)
 
 
+def test_promote_requires_training_source() -> None:
+    print("promote commits training source, not just results")
+    from autoresearch.loop.promote import source_files_to_promote
+    from autoresearch.loop.workspace import default_workspace, save_workspace
+
+    data = default_workspace()
+    data["files_changed"] = ["neuroasd/gcn.py"]
+    save_workspace(data)
+    sources = source_files_to_promote()
+    _check(
+        "files_changed gcn.py is promoted even if git status misses it",
+        any(path.name == "gcn.py" and path.is_file() for path in sources),
+        str(sources),
+    )
+
+
 def test_crash_or_skip_does_not_respin_experimenter() -> None:
     print("unmeasured trial cannot respin experimenter")
     from autoresearch.loop.workspace import default_workspace, save_workspace
@@ -449,6 +465,7 @@ def main() -> None:
         test_protocol_and_coverage,
         test_coder_fail_and_lint_block_training,
         test_pr_body_leads_with_scores,
+        test_promote_requires_training_source,
         test_crash_or_skip_does_not_respin_experimenter,
         test_experimenter_runs_one_stage,
         test_coder_cannot_write_gates,

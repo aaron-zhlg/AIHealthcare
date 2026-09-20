@@ -31,21 +31,38 @@ def _git(*args: str) -> str:
     return ran.stdout.strip()
 
 
+def _is_training_source(path: Path) -> bool:
+    neuroasd = (REPO_ROOT / "neuroasd").resolve()
+    trial = (REPO_ROOT / "autoresearch" / "trial.py").resolve()
+    resolved = path.resolve()
+    return resolved == trial or resolved.is_relative_to(neuroasd)
+
+
 def _changed_promotable_files() -> list[Path]:
     raw = _git("status", "--porcelain")
     paths: list[Path] = []
     for line in raw.splitlines():
         if len(line) < 4:
             continue
-        rel_path = line[3:].strip()
+        rel_path = line[3:].strip().strip('"')
         if " -> " in rel_path:
             rel_path = rel_path.split(" -> ", 1)[1]
         path = (REPO_ROOT / rel_path).resolve()
-        if path.is_relative_to((REPO_ROOT / "neuroasd").resolve()) or path == (
-            REPO_ROOT / "autoresearch" / "trial.py"
-        ).resolve():
+        if path.is_file() and _is_training_source(path):
             paths.append(path)
     return paths
+
+
+def source_files_to_promote() -> list[Path]:
+    """Model/training files that produced the score. Porcelain alone is not enough."""
+    found: dict[str, Path] = {}
+    for path in _changed_promotable_files():
+        found[rel(path)] = path
+    for rel_path in load_workspace().get("files_changed") or []:
+        path = (REPO_ROOT / str(rel_path)).resolve()
+        if path.is_file() and _is_training_source(path):
+            found[rel(path)] = path
+    return list(found.values())
 
 
 def _fmt(value: Any, digits: int = 3) -> str:
@@ -304,7 +321,13 @@ def promote(result: dict[str, Any], *, push: bool) -> dict[str, Any]:
     staged_result.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     experiment_dir = write_experiment_freeze(result)
 
-    to_add = {rel(path) for path in _changed_promotable_files()}
+    source_files = source_files_to_promote()
+    if not source_files:
+        raise RuntimeError(
+            "refusing to promote scores without the training/model source "
+            "(neuroasd/*.py or autoresearch/trial.py) that produced them"
+        )
+    to_add = {rel(path) for path in source_files}
     to_add.add(rel(staged_result))
     to_add.add(rel(experiment_dir / "results.json"))
     to_add.add(rel(experiment_dir / "run_config.json"))
