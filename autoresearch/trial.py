@@ -222,12 +222,21 @@ def run_fold(
     optimizer = torch.optim.Adam(
         model.parameters(), lr=config.lr, weight_decay=config.weight_decay
     )
+    # Cosine LR annealing (LR schedule only; peak LR stays config.lr). The gated
+    # metric is the FINAL-EPOCH auc_mean, and the ledger shows scores peak
+    # mid-training then decay under a constant LR for all 100 epochs (~0.075
+    # final-vs-best gap); annealing toward zero targets that largest measured
+    # untapped quantity without epoch selection, early stopping, or held-out data.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=config.epochs, eta_min=1e-5
+    )
     criterion = nn.CrossEntropyLoss()
 
     best_auc = -1.0
     metrics: dict[str, float] = {}
     for _ in range(config.epochs):
         train_one_epoch(model, train_loader, optimizer, criterion, device)
+        scheduler.step()  # advance the LR once per epoch, after its optimizer steps
         metrics = evaluate(model, test_loader, device)
         best_auc = max(best_auc, metrics["auc"])
 
