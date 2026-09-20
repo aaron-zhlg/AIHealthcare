@@ -13,7 +13,14 @@ from autoresearch.loop.coder import CoderAgent
 from autoresearch.loop.experimenter import ExperimenterAgent
 from autoresearch.loop.linter import LintAgent
 from autoresearch.loop.paths import clear_session_dirs, workspace_path
-from autoresearch.loop.workspace import load_workspace, mark_coder_outcome, next_role, record_lint
+from autoresearch.loop.workspace import (
+    ensure_stage_recorded,
+    load_workspace,
+    mark_coder_outcome,
+    mark_pending_stage,
+    next_role,
+    record_lint,
+)
 
 DEFAULT_GOAL = (
     "Improve the GNN's cross-site ASD vs control accuracy on ABIDE toward 80% "
@@ -162,6 +169,7 @@ def _linter_assignment(proposed: Assignment | None = None) -> Assignment:
 
 
 def _experimenter_assignment(proposed: Assignment | None = None) -> Assignment:
+    mark_pending_stage()
     objective = (
         proposed.objective
         if proposed and proposed.subagent == "experimenter"
@@ -254,6 +262,8 @@ class GNNLead(Orchestrator):
                         ],
                     }
                 )
+        if last is not None and last.subagent == "experimenter":
+            ensure_stage_recorded()
         if next_role() is None:
             return []
         follow_up = super()._evaluate(goal, results)

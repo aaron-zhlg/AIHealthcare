@@ -54,6 +54,7 @@ def default_workspace() -> dict[str, Any]:
         "history": [],
         "last_win": None,
         "ruled_out": [],
+        "pending_stage": None,
     }
 
 
@@ -252,6 +253,7 @@ def apply_trial_outcome(
     else:
         data["status"] = NEXT_STATUS_ON_PASS[stage]
         data["reverted"] = []
+    data["pending_stage"] = None
     data["history"] = list(data.get("history") or []) + [
         {
             "name": name,
@@ -263,6 +265,93 @@ def apply_trial_outcome(
     ]
     save_workspace(data)
     return data
+
+
+def mark_pending_stage() -> str | None:
+    """Remember which stage this experimenter instance must score."""
+    data = load_workspace()
+    stage = required_stage(data)
+    data["pending_stage"] = stage
+    save_workspace(data)
+    return stage
+
+
+def record_unmeasured_trial(
+    error: str,
+    *,
+    exit_code: int | None = None,
+    stdout_tail: str = "",
+    stderr_tail: str = "",
+) -> dict[str, Any]:
+    """Crash or skipped measurement is FAIL. Never leave status on needs_*."""
+    data = load_workspace()
+    stage = data.get("pending_stage") or required_stage(data)
+    if stage is None:
+        return data
+    name = str(data.get("current_name") or "").strip() or "unmeasured"
+    hypothesis = str(data.get("hypothesis") or "")
+    verdict = {
+        "stage": stage,
+        "metric": "auc_mean",
+        "threshold": None,
+        "observed": None,
+        "margin": None,
+        "passed": False,
+        "protocol_failed": True,
+        "error": error,
+        "exit_code": exit_code,
+    }
+    apply_trial_outcome(stage, name, verdict, {}, protocol_failed=True)
+    excerpt = "\n".join(
+        part for part in (stderr_tail.strip(), stdout_tail.strip()) if part
+    )[-1500:]
+    hint = (
+        f"{stage} was not scored ({error}). Diff reverted. "
+        "Next: coder, one new mechanism. Do not retry the crashed patch."
+    )
+    save_insight(
+        {
+            "name": name,
+            "stage": stage,
+            "hypothesis": hypothesis,
+            "auc_mean": None,
+            "margin": None,
+            "passed": False,
+            "protocol_failed": True,
+            "ruled_out": hypothesis or error,
+            "hint": hint,
+            "narrative": (
+                f"UNMEASURED {stage}: {error}. exit_code={exit_code}. "
+                "No result.json, no official auc_mean. Not a metric FAIL and not "
+                "a PASS. The diff was archived and reverted.\n"
+                + excerpt
+            ),
+            "next_code_change": (
+                "Do not retry the reverted patch. Implement exactly one different "
+                "mechanism on the last loso-full winner (or HEAD)."
+            ),
+        }
+    )
+    return load_workspace()
+
+
+def ensure_stage_recorded() -> dict[str, Any]:
+    """If this experimenter returned without scoring its stage, fail closed.
+
+    Uses ``pending_stage`` captured at dispatch so a screen PASS (which advances
+    status to needs_loso_subset) is not mistaken for a skipped subset run.
+    """
+    data = load_workspace()
+    pending = data.get("pending_stage")
+    if not pending:
+        return data
+    if (data.get("last_results") or {}).get(pending):
+        data["pending_stage"] = None
+        save_workspace(data)
+        return data
+    return record_unmeasured_trial(
+        "experimenter finished without scoring the required stage"
+    )
 
 
 def next_role(workspace: dict[str, Any] | None = None) -> str | None:

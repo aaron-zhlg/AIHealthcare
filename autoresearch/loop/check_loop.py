@@ -27,10 +27,13 @@ from autoresearch.loop.promote import pr_body, pr_title  # noqa: E402
 from autoresearch.loop.protocol import leak_reasons_in_source, protocol_ok  # noqa: E402
 from autoresearch.loop.workspace import (  # noqa: E402
     apply_trial_outcome,
+    ensure_stage_recorded,
     load_workspace,
     mark_coder_outcome,
+    mark_pending_stage,
     next_role,
     record_lint,
+    record_unmeasured_trial,
     save_insight,
 )
 
@@ -345,6 +348,72 @@ def test_pr_body_leads_with_scores() -> None:
     _check("best-epoch marked diagnostic", "not a result" in body)
 
 
+def test_crash_or_skip_does_not_respin_experimenter() -> None:
+    print("unmeasured trial cannot respin experimenter")
+    from autoresearch.loop.workspace import default_workspace, save_workspace
+
+    save_workspace(default_workspace())
+    writer = CodeTools()
+    writer.read_last_insight()
+    writer.record_hypothesis("broken inner split")
+    _write_scratch(writer, "broken.py", "value = 1\n")
+    mark_coder_outcome(True)
+    record_lint({"passed": True, "errors": []})
+    _check("qualified code still sends experimenter", next_role() == "experimenter")
+    mark_pending_stage()
+
+    record_unmeasured_trial("trial produced no result.json", exit_code=1)
+    after_crash = load_workspace()
+    _check(
+        "crash goes to awaiting_new_code",
+        after_crash["status"] == "awaiting_new_code",
+        after_crash["status"],
+    )
+    _check("crash next role is coder", next_role() == "coder")
+    _check("crash reverts the edit", not (_TMP / "broken.py").exists())
+    _check(
+        "crash records the stage",
+        bool((after_crash.get("last_results") or {}).get("screen")),
+        str(after_crash.get("last_results")),
+    )
+    _check("crash records ruled_out", bool(after_crash.get("ruled_out")))
+
+    save_workspace(default_workspace())
+    writer = CodeTools()
+    writer.read_last_insight()
+    writer.record_hypothesis("skipped measurement")
+    _write_scratch(writer, "skipped.py", "value = 2\n")
+    mark_coder_outcome(True)
+    record_lint({"passed": True, "errors": []})
+    mark_pending_stage()
+    ensure_stage_recorded()
+    after_skip = load_workspace()
+    _check(
+        "empty experimenter is fail-closed",
+        after_skip["status"] == "awaiting_new_code" and next_role() == "coder",
+        f"status={after_skip['status']} role={next_role()}",
+    )
+
+    save_workspace(default_workspace())
+    writer = CodeTools()
+    writer.read_last_insight()
+    _write_scratch(writer, "ok.py", "value = 3\n")
+    mark_coder_outcome(True)
+    record_lint({"passed": True, "errors": []})
+    mark_pending_stage()
+    name = load_workspace()["current_name"]
+    apply_trial_outcome(
+        "screen", name, _fake_verdict("screen", True, 0.64), {"auc_mean": 0.64}, False
+    )
+    ensure_stage_recorded()
+    after_pass = load_workspace()
+    _check(
+        "screen PASS is not treated as a skip",
+        after_pass["status"] == "needs_loso_subset" and next_role() == "experimenter",
+        f"status={after_pass['status']} role={next_role()}",
+    )
+
+
 def test_experimenter_runs_one_stage() -> None:
     print("one stage per experimenter")
     tools = ExperimenterTools(promote_on_pass=False, push=False)
@@ -380,6 +449,7 @@ def main() -> None:
         test_protocol_and_coverage,
         test_coder_fail_and_lint_block_training,
         test_pr_body_leads_with_scores,
+        test_crash_or_skip_does_not_respin_experimenter,
         test_experimenter_runs_one_stage,
         test_coder_cannot_write_gates,
     ]

@@ -18,6 +18,7 @@ from autoresearch.loop.workspace import (
     coder_finished_cleanly,
     lint_passed,
     load_workspace,
+    record_unmeasured_trial,
     required_stage,
     save_insight,
 )
@@ -208,12 +209,22 @@ class ExperimenterTools:
         )
         result_path = trials_dir() / f"{stage}__{name}" / "result.json"
         if not result_path.is_file():
+            stdout_tail = ran.stdout[-2000:]
+            stderr_tail = ran.stderr[-2000:]
+            workspace = record_unmeasured_trial(
+                "trial produced no result.json",
+                exit_code=ran.returncode,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
+            )
+            self.touched.append(f"crash:{stage}")
             return {
                 "ok": False,
                 "error": "trial produced no result.json",
                 "exit_code": ran.returncode,
-                "stdout_tail": ran.stdout[-2000:],
-                "stderr_tail": ran.stderr[-2000:],
+                "stdout_tail": stdout_tail,
+                "stderr_tail": stderr_tail,
+                "workspace_status": workspace.get("status"),
             }
 
         result = json.loads(result_path.read_text(encoding="utf-8"))
