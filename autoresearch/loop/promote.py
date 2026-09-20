@@ -1,13 +1,15 @@
 """Promote a loso-full PASS: freeze results and open a review PR.
 
-Commits only the training / evaluation diff plus the frozen experiment folder.
-Never merges to main and never edits gates.json. The PR body leads with scores.
+Commits only this trial's training/evaluation files plus its frozen experiment
+folder, on a branch cut from main. Never merges to main and never edits
+gates.json. The PR body leads with scores.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import tempfile
 from datetime import date
@@ -18,10 +20,10 @@ from autoresearch.loop.paths import EXPERIMENTS_DIR, REPO_ROOT, rel, results_dir
 from autoresearch.loop.workspace import load_workspace
 
 
-def _git(*args: str) -> str:
+def _git(*args: str, cwd: Path | None = None) -> str:
     ran = subprocess.run(
         ["git", *args],
-        cwd=REPO_ROOT,
+        cwd=cwd or REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
@@ -29,6 +31,19 @@ def _git(*args: str) -> str:
     if ran.returncode != 0:
         raise RuntimeError(ran.stderr.strip() or ran.stdout.strip() or "git failed")
     return ran.stdout.strip()
+
+
+def _promotion_base() -> str:
+    for ref in ("origin/main", "main"):
+        ran = subprocess.run(
+            ["git", "rev-parse", "--verify", ref],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if ran.returncode == 0:
+            return ref
+    raise RuntimeError("no main ref to branch the review PR from")
 
 
 def _is_training_source(path: Path) -> bool:
@@ -54,7 +69,11 @@ def _changed_promotable_files() -> list[Path]:
 
 
 def source_files_to_promote() -> list[Path]:
-    """Model/training files that produced the score. Porcelain alone is not enough."""
+    """Model/training files that produced the score. Porcelain alone is not enough.
+
+    Also include neuroasd/*.py and trial.py that differ from main, so a stacked
+    winner still ships the full model even if this iteration only touched one file.
+    """
     found: dict[str, Path] = {}
     for path in _changed_promotable_files():
         found[rel(path)] = path
@@ -62,7 +81,30 @@ def source_files_to_promote() -> list[Path]:
         path = (REPO_ROOT / str(rel_path)).resolve()
         if path.is_file() and _is_training_source(path):
             found[rel(path)] = path
+    try:
+        base = _promotion_base()
+        named = _git("diff", "--name-only", base, "--", "neuroasd", "autoresearch/trial.py")
+    except RuntimeError:
+        named = ""
+    for rel_path in named.splitlines():
+        rel_path = rel_path.strip()
+        if not rel_path:
+            continue
+        path = (REPO_ROOT / rel_path).resolve()
+        if path.is_file() and _is_training_source(path):
+            found[rel(path)] = path
     return list(found.values())
+
+
+def freeze_relpaths(name: str, stage: str) -> list[str]:
+    """This trial's score files only — not earlier experiments/ or results/."""
+    folder = EXPERIMENTS_DIR / f"{name}_v1"
+    return [
+        rel(results_dir() / f"{stage}__{name}" / "result.json"),
+        rel(folder / "results.json"),
+        rel(folder / "run_config.json"),
+        rel(folder / "README.md"),
+    ]
 
 
 def _fmt(value: Any, digits: int = 3) -> str:
@@ -328,43 +370,53 @@ def promote(result: dict[str, Any], *, push: bool) -> dict[str, Any]:
             "(neuroasd/*.py or autoresearch/trial.py) that produced them"
         )
     to_add = {rel(path) for path in source_files}
-    to_add.add(rel(staged_result))
-    to_add.add(rel(experiment_dir / "results.json"))
-    to_add.add(rel(experiment_dir / "run_config.json"))
-    to_add.add(rel(experiment_dir / "README.md"))
+    to_add.update(freeze_relpaths(name, stage))
+    for rel_path in to_add:
+        if not (REPO_ROOT / rel_path).is_file():
+            raise RuntimeError(f"promotion file missing: {rel_path}")
 
     branch = f"experiment/trial-{name}"
-    current = _git("rev-parse", "--abbrev-ref", "HEAD")
-    if current != branch:
-        existing = subprocess.run(
-            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
-            cwd=REPO_ROOT,
-        )
-        if existing.returncode == 0:
-            raise RuntimeError(f"branch {branch} already exists; review it by hand")
-        _git("checkout", "-b", branch)
+    existing = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=REPO_ROOT,
+    )
+    if existing.returncode == 0:
+        raise RuntimeError(f"branch {branch} already exists; review it by hand")
 
-    _git("add", "--", *sorted(to_add))
+    base = _promotion_base()
     note = result.get("note") or load_workspace().get("hypothesis") or "no note"
-    _git("commit", "-m", f"Trial {name} ({stage}): {note}")
-
+    worktree = Path(tempfile.mkdtemp(prefix="neuroasd-promote-"))
+    shutil.rmtree(worktree)
     pushed = False
     push_error = ""
-    remotes = _git("remote")
-    if push and "origin" in remotes.split():
-        try:
-            _git("push", "-u", "origin", branch)
-            pushed = True
-        except RuntimeError as exc:
-            push_error = str(exc)
-
     pr = None
     pr_error = ""
-    if pushed:
-        try:
-            pr = open_review_pr(branch, result)
-        except (RuntimeError, FileNotFoundError, OSError) as exc:
-            pr_error = str(exc)
+    try:
+        _git("worktree", "add", "-b", branch, str(worktree), base)
+        for rel_path in sorted(to_add):
+            dest = worktree / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPO_ROOT / rel_path, dest)
+        _git("add", "--", *sorted(to_add), cwd=worktree)
+        _git("commit", "-m", f"Trial {name} ({stage}): {note}", cwd=worktree)
+        remotes = _git("remote")
+        if push and "origin" in remotes.split():
+            try:
+                _git("push", "-u", "origin", branch, cwd=worktree)
+                pushed = True
+            except RuntimeError as exc:
+                push_error = str(exc)
+        if pushed:
+            try:
+                pr = open_review_pr(branch, result)
+            except (RuntimeError, FileNotFoundError, OSError) as exc:
+                pr_error = str(exc)
+    finally:
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+        )
 
     return {
         "branch": branch,

@@ -362,6 +362,15 @@ def test_promote_requires_training_source() -> None:
         any(path.name == "gcn.py" and path.is_file() for path in sources),
         str(sources),
     )
+    from autoresearch.loop.promote import freeze_relpaths
+
+    frozen = freeze_relpaths("iter25_cosine", "loso-full")
+    _check(
+        "freeze paths are this trial only",
+        all("iter25_cosine" in path for path in frozen)
+        and not any("iter6" in path or "iter1_" in path for path in frozen),
+        str(frozen),
+    )
 
 
 def test_crash_or_skip_does_not_respin_experimenter() -> None:
